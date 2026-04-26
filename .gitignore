@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# Hardhat artifacts
+artifacts/
+cache/
+typechain-types/
+coverage/
+coverage.json
+
+# Next.js
+.next/
+out/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Circom build output
+circuits/build/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+*.log
+dist/
+
+# Slide drafts kept locally only
+SLIDES_INTERMEDIATE.md
+SLIDES_FINAL.md

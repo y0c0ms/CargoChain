@@ -1,0 +1,39 @@
+{
+  "name": "cargochain-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Blockchain-based multi-modal logistics platform with SSI + ZKP",
+  "scripts": {
+    "node": "hardhat node",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "oracle:sim": "tsx scripts/oracle-simulator.ts",
+    "circuit:compile": "circom circuits/cold_chain.circom --r1cs --wasm --sym -o circuits/build",
+    "circuit:setup": "snarkjs groth16 setup circuits/build/cold_chain.r1cs pot14_final.ptau circuits/build/cold_chain_0000.zkey",
+    "circuit:verifier": "snarkjs zkey export solidityverifier circuits/build/cold_chain_final.zkey contracts/ZKVerifier.sol",
+    "app:dev": "cd app && next dev",
+    "app:build": "cd app && next build",
+    "lint:sol": "solhint contracts/**/*.sol",
+    "lint": "npm run lint:sol"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@types/node": "^20.0.0",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "ethers": "^6.11.0",
+    "hardhat": "^2.22.0",
+    "snarkjs": "^0.7.3",
+    "solhint": "^5.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^2.0.0",
+    "@noble/hashes": "^1.4.0",
+    "dotenv": "^16.4.0"
+  }
+}

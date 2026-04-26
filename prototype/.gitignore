@@ -1,0 +1,14 @@
+node_modules
+artifacts
+cache
+typechain-types
+coverage
+coverage.json
+.env
+.env.local
+circuits/build
+app/.next
+app/out
+app/node_modules
+dist
+*.log
