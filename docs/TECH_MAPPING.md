@@ -8,42 +8,38 @@ is listed here with one of four coverage statuses:
 - 🟠 **Reported** — analysed / discussed in slides or report, not in code
 - ⚪ **Out of scope** — acknowledged, not covered
 
-**Target coverage (final):** ≥ 69 % **Coded + Demo'd** (51 / 74 nodes).
-
 ---
 
 ## T1-T2 — Fundamentals & Central Concepts
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| DLT (Distributed Ledger Tech) | 🟢     | Besu network + Sepolia                                 |
+| DLT (Distributed Ledger Tech) | 🟢     | Ethereum Sepolia (public PoS) + local Hardhat          |
 | Blockchain                    | 🟢     | Both networks running                                  |
 | Evolution 1.0 → 4.0           | 🟠     | State-of-Art slide (positioning CargoChain as 3.0/4.0) |
 | Purpose (coord/proven/consensus)| 🟠   | Problem framing slide                                  |
 | Block                         | 🟢     | Every tx produces blocks on both networks              |
-| Transaction                   | 🟢     | Custody, mint, escrow, VC-anchor transactions          |
-| Consensus                     | 🟢     | IBFT 2.0 (Besu) + PoS (Sepolia)                        |
-| P2P Network                   | 🟢     | Besu 4-node P2P + Sepolia                              |
-| Immutability                  | 🟢     | Inherent; demonstrated in demo                         |
-| Decentralization              | 🟢     | Multi-node Besu + public Sepolia                       |
-| Hash Function                 | 🟢     | keccak256 used in Merkle + NFT metadata                |
-| Merkle Tree                   | 🟢     | `MerkleIoT.sol` + off-chain builder script             |
-| Cryptography                  | 🟢     | Signing, hashing, ZKP all exercised                    |
+| Transaction                   | 🟢     | Custody, create-consignment, IoT-anchor, VC issuance   |
+| Consensus                     | 🟢     | PoS (Ethereum / Polygon)                               |
+| P2P Network                   | 🟢     | Public PoS networks                                    |
+| Immutability                  | 🟢     | Inherent; demonstrated in regulator dashboard          |
+| Decentralization              | 🟢     | Public chain (no operator)                             |
+| Hash Function                 | 🟢     | keccak256 throughout (manifest hash, DID document hash, Merkle nodes) |
+| Merkle Tree                   | 🟢     | `MerkleIoT.sol` + off-chain builder + `verifyReading`  |
+| Cryptography                  | 🟢     | Hashing, signing all exercised                         |
 | Public-key Cryptography       | 🟢     | Ethereum secp256k1 (wallets) + Ed25519 (oracles)       |
-| Zero-Knowledge Proofs         | 🟢     | Groth16 zk-SNARK for cold-chain compliance             |
-| Network Types                 | 🟢     | Private (Besu) + Public (Sepolia) both demo'd          |
-| Public Blockchain             | 🟢     | Sepolia deployment                                     |
-| Private Blockchain            | 🟢     | Besu permissioned                                      |
-| Architecture (layers)         | 🟠     | ARCHITECTURE.md + slides 6 & 12                        |
-| Smart Contracts               | 🟢     | 7 Solidity contracts                                   |
-| Wallet                        | 🟢     | MetaMask (keys) + IndexedDB (VCs)                      |
-| NFT                           | 🟢     | `ConsignmentNFT.sol` (ERC-721)                         |
+| Zero-Knowledge Proofs         | 🟠     | Discussed as future-work extension; out of scope after professor feedback |
+| Network Types                 | 🟠     | Discussed; we run public only                          |
+| Public Blockchain             | 🟢     | Ethereum Sepolia                                       |
+| Private Blockchain            | 🟠     | Discussed (TradeLens / we.trade case studies)          |
+| Architecture (layers)         | 🟠     | ARCHITECTURE.md + slides                               |
+| Smart Contracts               | 🟢     | 4 Solidity contracts                                   |
+| Wallet                        | 🟢     | MetaMask + dev signer fallback                         |
+| NFT                           | 🟠     | Discussed; intentionally not used (see ConsignmentRegistry header) |
 | Non-blockchain DLTs           | 🟠     | State-of-Art slide (Hedera, DAGs contrast)             |
 | Platforms comparison          | 🟠     | Tech-stack slide                                       |
 | Use Cases                     | 🟢     | This project IS a use case (transport)                 |
 | Digital Identity              | 🟢     | DID-based identity for each actor                      |
-
-**T1-T2 subtotal:** 22 Coded · 4 Reported · 0 Out of scope
 
 ---
 
@@ -51,25 +47,27 @@ is listed here with one of four coverage statuses:
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| Consensus Mechanisms          | 🟢     | IBFT 2.0 + PoS both running                            |
-| PoW (Proof of Work)           | 🟠     | Comparison slide (not deployed, explained why not)     |
-| PoS (Proof of Stake)          | 🟢     | Sepolia uses PoS                                       |
+| Consensus Mechanisms          | 🟢     | PoS in production (Sepolia)                            |
+| PoW (Proof of Work)           | 🟠     | Comparison slide                                       |
+| PoS (Proof of Stake)          | 🟢     | Sepolia uses Casper FFG / LMD-GHOST PoS                |
 | DPoS                          | 🟠     | Comparison slide (Solana example)                      |
 | PoH (Proof of History)        | 🟠     | Comparison slide                                       |
-| BFT (Byzantine Fault Tolerance)| 🟢    | IBFT 2.0 in Besu                                       |
+| BFT (Byzantine Fault Tolerance)| 🟠    | Discussed; abandoned in favour of public PoS (case studies) |
+| IBFT 2.0                      | 🟠     | **Discussed as failure mode** (TradeLens case study)   |
 | Avalanche Consensus           | 🟠     | Comparison slide                                       |
-| Finality (probab/instant/determ) | 🟢 | Demonstrated: Besu = instant, Sepolia = determ.        |
-| Throughput                    | 🟢     | Benchmarked: Besu ~1000 TPS vs Sepolia ~15 TPS         |
+| Finality (probab/instant/determ) | 🟢 | Demonstrated: Hardhat instant; Sepolia ~13 min full finality |
+| Throughput                    | 🟢     | Benchmarked: Sepolia ~15 TPS                           |
+| Validator Economics           | 🟢     | PoS staking + slashing discussed in T3 slide           |
+| EIP-1559 Fee Market           | 🟢     | Both target chains use it                              |
+| Mempool                       | 🟢     | Standard PoS mempool                                   |
 | Scaling Solutions (hub)       | 🟠     | Dedicated analysis slide                               |
 | Sharding                      | 🟠     | Discussed as future work                               |
 | Rollups (L2)                  | 🟠     | Discussed; ZK-rollup is natural extension              |
-| Sidechains                    | 🟠     | Discussed (Polygon comparison)                         |
+| Sidechains                    | 🟠     | Discussed (Polygon comparison); not deployed           |
 | State Channels                | ⚪     | Mentioned only                                         |
 | DAGs                          | 🟠     | Hedera contrast in State of Art                        |
-| Governance of DLTs            | 🟠     | "Canton-style Foundation" model in report              |
-| Privacy Mechanisms            | 🟢     | ZKPs + Besu private channels                           |
-
-**T3 subtotal:** 6 Coded · 10 Reported · 1 Out of scope
+| Governance of DLTs            | 🟠     | Section 3 of CASE_STUDIES.md analyses governance failure |
+| Privacy Mechanisms            | 🟠     | Discussed; manifest off-chain is the privacy primitive |
 
 ---
 
@@ -77,23 +75,24 @@ is listed here with one of four coverage statuses:
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| Smart Contract Definition     | 🟢     | Every contract in `contracts/` folder                  |
+| Smart Contract Definition     | 🟢     | Every file in `contracts/`                             |
 | Legal vs Smart Contract       | 🟠     | Report section on MLETR Bill of Lading                 |
-| SC Categories                 | 🟠     | Tech-choice rationale slide (Solidity = purpose-driven)|
-| Solidity                      | 🟢     | All 7 contracts                                        |
-| Daml                          | 🟠     | Comparison slide (considered but rejected for demo)    |
-| Chaincode                     | 🟠     | Compared in platforms slide                            |
-| CorDapp                       | 🟠     | Compared in platforms slide                            |
-| Token Standards               | 🟢     | ERC-721 + ERC-20                                       |
+| SC Categories                 | 🟠     | Tech-choice rationale slide                            |
+| Solidity                      | 🟢     | All 4 contracts in Solidity 0.8.26                     |
+| Daml                          | 🟠     | Comparison slide                                       |
+| Chaincode (Fabric)            | 🟠     | TradeLens / we.trade case studies                      |
+| CorDapp                       | 🟠     | Marco Polo / Contour case studies                      |
+| Token Standards               | 🟠     | Discussed (ERC-721 critique); not used                 |
+| State Machines                | 🟢     | ConsignmentRegistry: Created → InTransit → Delivered   |
+| Custom Errors                 | 🟢     | All 4 contracts use them; decoded by `lib/errors.ts`   |
 | Challenges & limitations      | 🟠     | Challenges slide                                       |
 | Future Trends                 | 🟠     | Final "future work" slide                              |
-| Hyperledger Fabric            | 🟠     | Comparison: why we chose Besu instead                  |
-| R3 Corda                      | 🟠     | Comparison; Marco Polo case study                      |
-| Canton Network                | 🟠     | Governance model borrowed; not deployed                |
-| Hyperledger Besu              | 🟢     | Running in prototype                                   |
+| Hyperledger Fabric            | 🟠     | TradeLens case study (failure mode)                    |
+| R3 Corda                      | 🟠     | Marco Polo + Contour case studies (failure modes)      |
+| Canton Network                | 🟠     | Comparison; not deployed                               |
+| Hyperledger Besu              | 🟠     | **Removed** after case-study analysis                  |
 | Solana / Cardano / Avalanche / Hedera | 🟠 | Public DLT comparison slide                        |
-
-**T4 subtotal:** 3 Coded · 12 Reported · 0 Out of scope
+| OpenZeppelin                  | 🟠     | Discussed; intentionally not used (no token standards needed) |
 
 ---
 
@@ -105,98 +104,90 @@ is listed here with one of four coverage statuses:
 | How SSI works (4 steps)       | 🟢     | Demo walks exactly these 4 steps                       |
 | SSI Benefits                  | 🟠     | Discussion slide                                       |
 | SSI Challenges                | 🟠     | Challenges slide                                       |
-| DID                           | 🟢     | did:ethr implementation                                |
-| DID Document                  | 🟢     | JSON-LD stored; returned by DIDRegistry                |
+| DID                           | 🟢     | Address-anchored DID implementation                    |
+| DID Document                  | 🟢     | JSON-LD stored off-chain; hash anchored on-chain       |
 | DID Architecture              | 🟢     | Subject / Controller / Registry all modelled           |
-| Verification Methods          | 🟢     | Authentication key + assertion key per DID             |
+| Verification Methods          | 🟢     | Authentication key per DID                             |
 | DID Services                  | 🟡     | Static `serviceEndpoint` for each actor                |
-| Verifiable Credentials        | 🟢     | 3 schemas: LicensedCarrier, CustomsOfficer, PharmaGrade|
+| Verifiable Credentials        | 🟢     | 5 schemas (LicensedCarrier, CustomsOfficer, PharmaGrade, PortOperator, InspectorAuthority) |
 | VC Lifecycle                  | 🟢     | Issue → Hold → Present → Verify all in demo            |
-| On-ledger vs Off-ledger       | 🟢     | VCs off-ledger in wallet, DIDs + schema hashes on-chain|
-| Identity + Smart Contracts    | 🟢     | `CarrierCredential.sol` checks VC before custody       |
+| On-ledger vs Off-ledger       | 🟢     | VCs off-ledger in wallet; hashes + schemas on-chain    |
+| Identity + Smart Contracts    | 🟢     | `ConsignmentRegistry.transferCustody` checks VC before handover |
 | Hyperledger Identity Stack    | 🟠     | Inspired; simulated in our code                        |
 | Sovrin                        | 🟠     | State-of-Art slide                                     |
 | EBSI                          | 🟠     | State-of-Art + EU pilot relevance                      |
 | Privado ID                    | 🟠     | State-of-Art; privacy-first positioning                |
 | Identity Future Trends        | 🟠     | Future work slide                                      |
 | Identity Challenges           | 🟠     | Challenges slide                                       |
-
-**T5 subtotal:** 9 Coded · 1 Demo'd · 9 Reported · 0 Out of scope
+| Selective Disclosure          | 🟢     | `subjectHasActiveVC` returns boolean — VC body not exposed |
 
 ---
 
-## T6 — Deep ZKP + Daml
+## T6 — Privacy, ZKP, Smart Contract Languages
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| ZKP Properties                | 🟢     | Our Groth16 proof has all 3 (complete/sound/ZK)        |
-| ZKP Interactive               | 🟠     | Explained in slide; not used in demo                   |
-| ZKP Non-Interactive           | 🟢     | Groth16 = NIZKP                                        |
-| zk-SNARKs                     | 🟢     | Groth16 circuit in `circuits/`                         |
+| Hash anchoring                | 🟢     | manifestHash, vcHash, documentHash all on-chain        |
+| Off-chain data + on-chain proof | 🟢   | Manifest JSON off-chain; Merkle IoT batches            |
+| Merkle proof verification     | 🟢     | `MerkleIoT.verifyReading` — anyone can prove on-chain  |
+| Daml Templates & Choices      | 🟠     | Contrasted with Solidity in a slide                    |
+| Daml Contract Flow            | 🟠     | Mentioned in Daml comparison                           |
+| ZKP Properties (compl/sound/ZK) | 🟠   | Explained in slide; out of scope after professor feedback |
+| ZKP Interactive               | 🟠     | Explained in slide                                     |
+| ZKP Non-Interactive           | 🟠     | Explained in slide                                     |
+| zk-SNARKs                     | 🟠     | Discussed; not implemented after scope reduction       |
 | zk-STARKs                     | 🟠     | Compared in ZKP slide                                  |
-| ZKP Applications              | 🟢     | Selective disclosure demonstrated                       |
-| ZKP Challenges                | 🟠     | Trusted setup + perf issues discussed                   |
-| Daml Templates & Choices      | 🟠     | Contrasted with Solidity in a slide                     |
-| Daml Contract Flow            | 🟠     | Mentioned in Daml comparison                            |
-
-**T6 subtotal:** 4 Coded · 5 Reported · 0 Out of scope
+| ZKP Applications              | 🟠     | Discussed (selective disclosure achievable via VC architecture) |
+| ZKP Challenges                | 🟠     | Trusted setup, perf, complexity discussed              |
 
 ---
 
-## Totals
+## Security & Access Control (audit-driven)
 
-| Category         | Count | Target |
-|------------------|-------|--------|
-| 🟢 Coded         | 44    | ≥ 40   |
-| 🟡 Demo'd        | 1     | —      |
-| 🟠 Reported      | 41    | —      |
-| ⚪ Out of scope  | 1     | —      |
-| **Total nodes**  | ~87   | 74     |
-| **Coverage (Coded + Demo'd)** | **~52 %** | ≥ 55 %  |
-| **Coverage (any form)**       | **~99 %** | ≥ 95 %  |
-
-*(Numbers are placeholders until final build; update after each sprint.)*
-
----
-
-## Security & Access Control (added in audit pass)
-
-The course concept map doesn't have a dedicated "access control" node, but
-the audit work exercises several T1-T4 concepts in their *adversarial*
+The audit work exercises several T1-T4 concepts in their *adversarial*
 direction (Cryptography → integrity verification, Smart Contract → custom
 errors + role gates, Verifiable Credentials → trusted-issuer model).
 
-| Audit finding              | Status | Concept exercised                              |
-|----------------------------|--------|------------------------------------------------|
-| H-1 Trusted issuer registry | 🟢    | VC Lifecycle · Issuer authority · SSI trust    |
-| H-2 Oracle allowlist        | 🟢    | Oracle problem · Trust assumption              |
-| H-3 ZK-proof binding        | 🟢    | ZKP soundness · Replay protection · Selective disclosure |
-| H-4 DID Document hash check | 🟢    | Hash · Integrity · Verifiable Data Registry    |
-| M-2 Refund pre-custody only | 🟢    | Smart Contract state machine · Custody invariant |
-| M-1 Recipient consent       | 🟠    | Documented as known limitation                  |
+| Audit finding                      | Status | Concept exercised                                |
+|------------------------------------|--------|--------------------------------------------------|
+| H-1 Trusted issuer registry        | 🟢     | VC Lifecycle · Issuer authority · SSI trust      |
+| H-2 Oracle allowlist               | 🟢     | Oracle problem · Trust assumption                |
+| H-3 IoT Merkle proof verification  | 🟢     | Merkle · Hash · Data integrity · Verification    |
+| H-4 DID Document hash check        | 🟠     | Documented threat; demo doesn't fetch DID Documents |
+| M-1 Recipient consent (open)       | 🟠     | Documented as known limitation                   |
 
-Tests that lock these in: `prototype/test/Security.test.ts` (9 cases).
+Regression tests live in `prototype/test/Security.test.ts` (7 cases).
+
+---
+
+## Industry positioning (case-study-driven)
+
+The case-study analysis ([CASE_STUDIES.md](CASE_STUDIES.md)) maps to several
+T3-T4 concepts in a way the original concept map doesn't:
+
+| Concept exercised             | Case-study evidence                                                      |
+|-------------------------------|--------------------------------------------------------------------------|
+| Permissioned-chain failure modes | TradeLens, we.trade, Marco Polo, Contour, B3i, ASX CHESS              |
+| Public-chain enterprise scale | CargoX (3 m+ docs on Ethereum) + OriginTrail (Swiss Federal Railways) at production |
+| Adoption-as-forcing-function  | IBM Food Trust (Walmart mandate), MediLedger (DSCSA legal mandate)       |
+| Governance neutrality         | GSBN's non-profit model vs TradeLens's Maersk-controlled model           |
 
 ---
 
 ## Concept → File Quick-Lookup
 
-| Concept      | Primary file                                          |
-|--------------|-------------------------------------------------------|
-| DID Registry | `prototype/contracts/DIDRegistry.sol`                 |
-| VC Anchor + issuer allowlist | `prototype/contracts/CarrierCredential.sol`  |
-| Consignment NFT | `prototype/contracts/ConsignmentNFT.sol`           |
-| Custody log  | `prototype/contracts/CustodyLedger.sol`               |
-| IoT Merkle + oracle allowlist | `prototype/contracts/MerkleIoT.sol`         |
-| ZK verifier  | `prototype/contracts/ZKVerifier.sol` (auto-generated) |
-| Escrow + replay protection | `prototype/contracts/FreightEscrow.sol`     |
-| ZK circuit   | `prototype/circuits/cold_chain.circom`                |
-| Oracle sim   | `prototype/scripts/oracle-simulator.ts`               |
-| Wallet       | `prototype/app/lib/wallet.ts`                         |
-| VC issuer    | `prototype/app/lib/vc-issuer.ts`                      |
-| DID resolver + hash check | `prototype/app/lib/did-resolver.ts`        |
-| Friendly errors | `prototype/app/lib/errors.ts`                      |
-| Security regressions | `prototype/test/Security.test.ts`             |
+| Concept                            | Primary file                                          |
+|------------------------------------|-------------------------------------------------------|
+| DID Registry                       | `prototype/contracts/DIDRegistry.sol`                 |
+| VC Anchor + issuer allowlist       | `prototype/contracts/CarrierCredential.sol`           |
+| Consignment + custody (state mach.)| `prototype/contracts/ConsignmentRegistry.sol`         |
+| IoT Merkle + verifyReading         | `prototype/contracts/MerkleIoT.sol`                   |
+| Oracle simulator                   | `prototype/scripts/oracle-simulator.ts`               |
+| Friendly error decoder             | `prototype/app/lib/errors.ts`                         |
+| Wallet abstraction (signer)        | `prototype/app/lib/signer.ts`                         |
+| Live IoT verification UI           | `prototype/app/pages/simulation.tsx`                  |
+| Security regressions               | `prototype/test/Security.test.ts`                     |
+| End-to-end gas measurement         | `prototype/test/E2E.test.ts`                          |
 
 Keep this page open when writing the report — it is the concept-coverage
 Appendix A table.

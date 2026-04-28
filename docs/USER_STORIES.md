@@ -5,46 +5,46 @@ Format: **As a** [actor] **I want** [capability] **so that** [value], exercising
 
 Numbered so the report can cite them as US-01 … US-NN.
 
+> **Scope changes (April 2026):** payment / escrow / ZK stories (originally
+> US-02, US-08, US-09, US-18) were removed after the professor-driven scope
+> reduction. Numbering is preserved with placeholders so existing references
+> stay valid; the gap is part of the historical record.
+
 ---
 
 ## Actors
 
-| ID | Actor                  | Example          | On-chain identity    |
-|----|------------------------|------------------|----------------------|
-| A1 | Shipper                | Pfizer           | DID + Consignment owner |
+| ID | Actor                  | Example          | On-chain identity        |
+|----|------------------------|------------------|--------------------------|
+| A1 | Shipper                | Pfizer           | DID + creates consignments |
 | A2 | Carrier                | TAP Air Cargo    | DID + LicensedCarrier VC |
 | A3 | Customs Officer        | Alfândega PT     | DID + CustomsOfficer VC  |
-| A4 | Receiver               | MSF Luanda       | DID + PharmaGrade VC     |
-| A5 | Regulator / Auditor    | Tribunal de Contas | Read-only auditor DID  |
-| A6 | Issuer (Licensing Authority) | IMT / ANAC / IATA | DID, signs VCs     |
+| A4 | Receiver               | MSF Luanda       | DID + LicensedCarrier VC |
+| A5 | Regulator / Auditor    | Tribunal de Contas | Read-only auditor      |
+| A6 | Issuer (Licensing Authority) | IMT / ANAC / IATA | DID, signs VCs       |
 | A7 | IoT Oracle Operator    | Sensitech Gateway| Ed25519 signing key      |
 
 ---
 
 ## Core on-chain stories
 
-### US-01 · Shipper tokenises a consignment
+### US-01 · Shipper registers a consignment
 **As** a Shipper (A1)
-**I want** to mint a non-fungible token that represents a physical container,
-with its House Bill of Lading, route, weight, commodity class and temperature
-bounds baked into the metadata,
+**I want** to register a new consignment on-chain by anchoring the keccak256
+hash of its off-chain manifest JSON,
 **so that** every downstream party shares one tamper-proof reference for the
-shipment.
-*Concepts:* NFT · ERC-721 · Tokenisation · Smart Contract · Hash of manifest.
-*Implementation:* `ConsignmentNFT.mint(shipper, metadataURI, manifest)` — Shipper dashboard "Mint Consignment" button.
-*Acceptance:* a new `tokenId` is returned, the shipper owns the NFT, a `ConsignmentMinted` event is emitted.
+shipment without exposing commercial detail in the storage of the contract.
+*Concepts:* Smart Contract · Hash anchoring · State machine · On-/off-chain pattern.
+*Implementation:* `ConsignmentRegistry.createConsignment(manifestHash, manifestURI)` — Shipper dashboard "Create Consignment" button.
+*Acceptance:* a new `id` is returned, `consignments(id).shipper` equals the caller, a `ConsignmentCreated` event is emitted with `manifestHash` and `manifestURI`.
 
 ---
 
-### US-02 · Shipper funds freight escrow
-**As** a Shipper (A1)
-**I want** to lock the agreed freight amount in an on-chain escrow keyed to
-the consignment tokenId,
-**so that** the carrier is paid automatically on verified delivery and no
-manual invoicing is needed.
-*Concepts:* ERC-20 · Smart Contract escrow · Atomic settlement.
-*Implementation:* `FreightToken.approve(...)` + `FreightEscrow.fund(tokenId, carrier, receiver, amount)`.
-*Acceptance:* `EscrowFunded` emitted, `escrows(tokenId).amount > 0`, shipper's FRT balance decremented.
+### US-02 · *(removed — was: Shipper funds freight escrow)*
+Payment is no longer in scope. The case-study analysis (CargoX, OriginTrail,
+GSBN) shows that production logistics platforms succeed without on-chain
+settlement; payment can be settled out-of-band against the on-chain audit
+trail.
 
 ---
 
@@ -52,24 +52,24 @@ manual invoicing is needed.
 **As** an Issuer (A6) — e.g. IMT or ANAC —
 **I want** to sign a W3C Verifiable Credential stating that a party is a
 Licensed Carrier / Customs Officer / Pharma-grade receiver, and anchor its
-hash on-chain,
+hash on-chain (only after being added to the issuer allowlist),
 **so that** smart contracts can verify the credential independently without
 holding personal data on chain.
 *Concepts:* SSI · DIDs · Verifiable Credentials · Issuer-Holder-Verifier · On-ledger/Off-ledger.
-*Implementation:* `CarrierCredential.issueVC(subject, schema, vcHash, notBefore, expiry)`.
-*Acceptance:* `VCIssued` event, `isValid(vcHash) == true`, `subjectHasActiveVC(subject, schema) == true`.
+*Implementation:* `CarrierCredential.setApprovedIssuer(...)` (owner) + `CarrierCredential.issueVC(subject, schema, vcHash, notBefore, expiry)`.
+*Acceptance:* `VCIssued` event, `isValid(vcHash) == true`, `subjectHasActiveVC(subject, schema) == true`. Reverts with `IssuerNotApproved` if caller is not on the schema allowlist (audit fix H-1).
 
 ---
 
 ### US-04 · Carrier accepts custody
 **As** a Carrier (A2)
-**I want** to take custody of a consignment NFT by presenting my VC, signing
-a handshake nonce with my DID key, and logging the location,
+**I want** to take custody of a consignment by presenting my LicensedCarrier
+VC and logging the location,
 **so that** I inherit responsibility for the goods and the transfer is
 uniquely attributable to me.
 *Concepts:* Identity + Smart Contract integration · Immutability · Event log · DIDs.
-*Implementation:* `ConsignmentNFT.setApprovalForAll` + `CustodyLedger.transferCustody(tokenId, to, unLocode, handshake)` — Carrier dashboard "Transfer Custody" button.
-*Acceptance:* transfer reverts with `RecipientNotLicensed` if receiver lacks VC; succeeds with `CustodyTransferred` event otherwise; `hopCount` increments.
+*Implementation:* `ConsignmentRegistry.transferCustody(id, to, unLocode, handshake)` — Carrier dashboard "Transfer Custody" button.
+*Acceptance:* transfer reverts with `RecipientNotLicensed` if recipient lacks VC; succeeds with `CustodyTransferred` event otherwise; `hopCount` increments; status auto-advances to `InTransit` on first transfer.
 
 ---
 
@@ -80,7 +80,7 @@ uniquely attributable to me.
 changing hands.
 *Concepts:* Multi-party flows · Custody chain · Smart Contract.
 *Implementation:* same `transferCustody` call with new `to`.
-*Acceptance:* chain of `Handover` records accumulates under `historyOf(tokenId)`.
+*Acceptance:* chain of `Handover` records accumulates under `historyOf(id)`.
 
 ---
 
@@ -98,61 +98,62 @@ commercial data.
 
 ### US-07 · IoT oracle anchors a batch of sensor readings
 **As** an Oracle Operator (A7)
-**I want** to collect ~8-2400 signed temperature + GPS readings per
-consignment, build a Merkle tree and anchor just the root on-chain,
-**so that** compliance can be proven later without writing every reading on
-chain (~99% gas saving).
+**I want** to collect signed temperature + GPS readings per consignment,
+build a Merkle tree, and anchor just the root on-chain (only after being
+added to the oracle allowlist),
+**so that** any individual reading can be proven later without storing
+millions of readings on chain.
 *Concepts:* Merkle Tree · Hash · Oracle · Ed25519 (m-of-n) · Scaling.
 *Implementation:* `scripts/oracle-simulator.ts` → `MerkleIoT.anchorBatch(tokenId, root, count, firstTs, lastTs)`.
-*Acceptance:* `BatchAnchored` event; `verifyReading(batchId, leaf, proof)` accepts a leaf with a valid path.
+*Acceptance:* `BatchAnchored` event; reverts with `NotOracle` for unapproved callers (audit fix H-2); writes JSON file to `prototype/app/public/oracle-batches/batch-N.json` with per-leaf proofs.
 
 ---
 
-### US-08 · Receiver submits cold-chain ZK compliance proof
-**As** a Receiver (A4)
-**I want** to produce a zk-SNARK proving that every temperature reading in
-the journey was within [2 °C, 8 °C], without revealing the readings
-themselves,
-**so that** the escrow releases automatically while commercial temperature
-curves stay confidential (an insurer / regulator sees only "compliant: true").
-*Concepts:* ZKP · zk-SNARKs · Non-interactive · Selective Disclosure · Completeness · Soundness · Zero-Knowledge.
-*Implementation:* circom `cold_chain.circom` + snarkjs browser prover → `FreightEscrow.releaseWithProof(tokenId, a, b, c, publicInputs)`.
-*Acceptance:* proof accepted ⇒ `EscrowReleased` event, carrier's FRT balance increases by `amount`, NFT owner is the receiver.
+### US-08 · *(removed — was: Receiver submits cold-chain ZK proof to release escrow)*
+ZK escrow removed with payment scope. The "verify without revealing"
+property is now satisfied by **on-chain Merkle proof verification of IoT
+readings** (US-08-NEW below) — same theme, simpler implementation.
 
 ---
 
-### US-09 · Shipper refunds a failed shipment
-**As** a Shipper (A1)
-**I want** to reclaim the escrowed amount if the shipment fails or is
-cancelled before release,
-**so that** capital is not stranded.
-*Concepts:* Smart Contract escrow · State machine.
-*Implementation:* `FreightEscrow.refund(tokenId)`.
-*Acceptance:* `EscrowRefunded`; shipper balance restored; escrow state locked.
+### US-08-NEW · Anyone verifies a specific IoT reading on-chain
+**As** any verifier — Receiver, Auditor, Insurer (A4 / A5 / external)
+**I want** to prove on-chain that a specific temperature reading was part of
+an anchored batch (i.e. wasn't tampered with after the fact),
+**so that** I can audit individual readings without trusting the off-chain
+data store.
+*Concepts:* Merkle Tree · Hash · Data integrity · Verification · Selective disclosure.
+*Implementation:* `MerkleIoT.verifyReading(batchId, leaf, proof)` — Simulation dashboard "Verify" button per reading.
+*Acceptance:* returns `true` for a valid (leaf, proof) pair, `false` for a tampered leaf or wrong proof. Audit test H-3 (2 cases) locks this in.
+
+---
+
+### US-09 · *(removed — was: Shipper refunds escrow on cancellation)*
+Payment scope removed.
 
 ---
 
 ### US-10 · Regulator runs an end-to-end audit
 **As** a Regulator / Auditor (A5)
 **I want** to see, for any consignment, its full custody chain, IoT-batch
-count, and compliance verdict — but NOT the commercial freight rate —
-**so that** I can confirm legal and ESG compliance without needing NDAs with
-the carriers.
-*Concepts:* Auditability · Privacy · Transparency · Selective disclosure.
-*Implementation:* Regulator dashboard "Run Audit" — reads `ConsignmentNFT.getManifest`, `CustodyLedger.historyOf`, `MerkleIoT.batchesOf`.
-*Acceptance:* audit view shows HBL, route, hops, IoT batches; no `amount` or `shipper.balance` leaks.
+count, manifest hash and URI, and current status,
+**so that** I can confirm legal and ESG compliance, fetch the off-chain
+manifest from the URI, and verify it hasn't been tampered with.
+*Concepts:* Auditability · Privacy · Transparency · Hash anchoring.
+*Implementation:* Regulator dashboard "Run Audit" — reads `ConsignmentRegistry.consignments(id)`, `historyOf(id)`, and `MerkleIoT.batchesOf(id)`.
+*Acceptance:* audit view shows shipper, current custodian, status, manifest hash, URI, hop list, and batch count. Auditor can fetch the JSON at the URI and re-hash it to verify integrity.
 
 ---
 
 ### US-11 · Party registers its self-sovereign identity
 **As** any actor (A1–A7)
-**I want** to register a DID with a JSON-LD DID Document on a decentralized
+**I want** to register a DID with a JSON-LD DID Document on a decentralised
 registry,
-**so that** my identity is portable, I hold my own keys, and no centralized
+**so that** my identity is portable, I hold my own keys, and no centralised
 provider can gate my access.
 *Concepts:* SSI · DIDs · DID Document · Verifiable Data Registry · Decentralization.
 *Implementation:* `DIDRegistry.register(docHash, docURI)`.
-*Acceptance:* `DIDRegistered` event; `isActive(subject)` becomes true; the URI resolves to a DID Document whose keccak256 equals `docHash`.
+*Acceptance:* `DIDRegistered` event; `isActive(subject)` becomes true; the URI resolves to a DID Document whose keccak256 equals `docHash` (front-end resolver enforces this — audit fix H-4).
 
 ---
 
@@ -180,26 +181,25 @@ lapses),
 
 ## Cross-cutting / quality stories
 
-### US-14 · Operator runs on a private permissioned chain
-**As** a consortium operator,
-**I want** to deploy the stack to a Hyperledger Besu network with IBFT 2.0
-consensus,
-**so that** throughput is ~1000 TPS with instant finality and only whitelisted
-validators produce blocks.
-*Concepts:* Private/Permissioned BC · BFT · IBFT 2.0 · Finality (instant) · Besu.
-*Implementation:* `hardhat.config.ts` → `networks.besu`; deploy via `npm run deploy:besu`.
-*Acceptance:* every deployed contract reachable at the addresses printed by `deploy.ts`.
+### US-14 · Operator deploys to a public chain
+**As** an operator,
+**I want** to deploy the stack to Ethereum's public Sepolia testnet,
+**so that** any auditor, insurer, or regulator can read the chain state
+without joining a consortium.
+*Concepts:* Public BC · PoS · Decentralization · Deterministic finality.
+*Implementation:* `npm run deploy:sepolia`.
+*Acceptance:* contract addresses are reachable from any RPC; transactions appear on Etherscan (`sepolia.etherscan.io`).
 
 ---
 
-### US-15 · Operator mirrors to a public chain
-**As** a consortium operator,
-**I want** to additionally deploy to Ethereum Sepolia,
-**so that** third parties can audit key records (e.g. DID registry hashes)
-without joining the consortium.
-*Concepts:* Public BC · PoS · Deterministic finality · Cross-chain.
-*Implementation:* `npm run deploy:sepolia`.
-*Acceptance:* the same contract addresses work against `NEXT_PUBLIC_RPC=https://rpc.sepolia.org`.
+### US-15 · Receiver marks a consignment delivered
+**As** the final custodian (A4 — Receiver),
+**I want** to mark the consignment as delivered,
+**so that** the on-chain status reflects completion and downstream parties
+(insurers, regulators) can rely on it as the canonical end-of-journey.
+*Concepts:* State machine · Smart Contract · Auditability.
+*Implementation:* `ConsignmentRegistry.markDelivered(id)`.
+*Acceptance:* status changes from `InTransit` to `Delivered`; subsequent `transferCustody` calls revert with `AlreadyDelivered`.
 
 ---
 
@@ -207,11 +207,10 @@ without joining the consortium.
 **As** an evaluator or demo viewer,
 **I want** the UI to fall back to a development signer when no MetaMask is
 injected,
-**so that** the demo runs in any browser — screenshots, headless CI, preview
-panes — without crypto-wallet setup.
+**so that** the demo runs in any browser without crypto-wallet setup.
 *Concepts:* Wallet · Public-key cryptography · UX.
 *Implementation:* `app/lib/signer.ts` — tries `window.ethereum` first, then `NEXT_PUBLIC_RPC` + `NEXT_PUBLIC_DEV_KEY`.
-*Acceptance:* on a stock browser the "Mint Consignment" flow completes and the address badge reads `dev · 0xf39F…2266`.
+*Acceptance:* on a stock browser the "Create Consignment" flow completes and the address badge reads `dev · 0xf39F…2266`.
 
 ---
 
@@ -222,35 +221,32 @@ carrier (no valid VC),
 **so that** the chain cannot accidentally hand off to an unauthorised party.
 *Concepts:* Business-rule validation · Custom errors · Identity + Smart Contracts.
 *Implementation:* revert `RecipientNotLicensed()` (selector `0x3cf806b4`) when the check fails.
-*Acceptance:* UI shows "error: execution reverted (RecipientNotLicensed)" when handing off to e.g. `0xf39Fd6…` (deployer) which has no `LicensedCarrier` VC. **This is exactly the error you just hit — it's a feature, not a bug.**
+*Acceptance:* UI shows "error: ... (RecipientNotLicensed)" when handing off to an address with a DID but no LicensedCarrier VC.
 
 ---
 
-### US-18 · Privacy-preserving compliance to third-party insurer
-**As** an Insurer (not modelled as a distinct dashboard but a consumer of
-regulator data),
-**I want** proof that the cold chain was respected without seeing the
-readings or the commercial rate,
-**so that** I can settle claims (or refuse fraudulent ones) with
-mathematically verifiable evidence.
-*Concepts:* ZKP · Selective disclosure · Privacy mechanisms.
-*Implementation:* `FreightEscrow.releaseWithProof` publishes proof hash; insurer queries `escrows(tokenId).released`.
-*Acceptance:* an insurer can verify release happened and the ZK proof was accepted, but can't read individual temperature readings or the 420 FRT amount from a regulator-facing query.
+### US-18 · *(removed — was: Insurer queries privacy-preserving compliance)*
+ZK escrow removed. The "compliance verifiable without seeing data" property
+is now satisfied at a finer granularity by US-08-NEW (per-reading Merkle
+verification): the auditor sees `verifyReading == true` without ever reading
+the temperature value itself, since they only feed the leaf hash to the
+contract.
 
 ---
 
 ## Quick map: story → test → slide
 
-| Story | Test in `prototype/test/E2E.test.ts` line | Slide in the final deck |
-|-------|-------------------------------------------|-------------------------|
-| US-01 | "mint NFT"                                | Slide 6 demo step 0:00  |
-| US-02 | "fund escrow"                             | Slide 5 (case study)    |
-| US-03 | "issue VC" (seed.ts)                      | Slide 6 demo step 0:25  |
-| US-04, US-05 | "transferCustody"                  | Slide 6 demo step 0:50  |
-| US-06 | "subjectHasActiveVC"                      | Slide 6 demo step 1:45  |
-| US-07 | oracle-simulator.ts                       | Slide 6 demo step 1:15  |
-| US-08 | "releaseWithProof"                        | Slide 6 demo step 2:10  |
-| US-10 | "historyOf + getManifest + batchesOf"     | Slide 6 demo step 2:30  |
-| US-17 | negative path                             | Slide 8 results table   |
+| Story          | Test in `prototype/test/E2E.test.ts` section            | Slide in the final deck |
+|----------------|---------------------------------------------------------|-------------------------|
+| US-01          | "SHIPPER dashboard"                                     | Slide 6 demo step 0:00  |
+| US-03          | seed.ts (issuer approval + VC issuance)                 | Slide 6 demo step 0:25  |
+| US-04, US-05   | "CARRIER dashboard"                                     | Slide 6 demo step 0:50  |
+| US-06          | "CUSTOMS dashboard"                                     | Slide 6 demo step 1:15  |
+| US-07          | "IoT oracle"                                            | Slide 6 demo step 1:30  |
+| US-08-NEW      | "Simulation dashboard"                                  | Slide 6 demo step 1:45  |
+| US-15          | "RECEIVER dashboard"                                    | Slide 6 demo step 2:00  |
+| US-10          | "REGULATOR dashboard"                                   | Slide 6 demo step 2:15  |
+| US-17          | `CargoChain.test.ts → "blocks custody transfer..."`     | Slide 8 results table   |
 
-Run `cd prototype && npx hardhat test test/E2E.test.ts` — every story above is exercised by that one command and the gas cost feeds straight into the Results slide.
+Run `cd prototype && npx hardhat test test/E2E.test.ts` — every story above
+is exercised by that one command, with gas costs printed in console output.

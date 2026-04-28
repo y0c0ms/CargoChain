@@ -3,40 +3,39 @@ import { ethers } from "ethers";
 import { getSigner } from "../lib/signer";
 import { friendlyError } from "../lib/errors";
 
-const NFT_ABI = [
-  "function setApprovalForAll(address operator,bool approved) external",
-  "function ownerOf(uint256 tokenId) view returns (address)",
-];
-const CUSTODY_ABI = [
-  "function transferCustody(uint256 tokenId,address to,string locationUnLocode,bytes32 proofOfHandshake) external",
-  "function hopCount(uint256 tokenId) view returns (uint256)",
+const REGISTRY_ABI = [
+  "function transferCustody(uint256 id,address to,string locationUnLocode,bytes32 proofOfHandshake) external",
+  "function custodianOf(uint256 id) view returns (address)",
+  "function hopCount(uint256 id) view returns (uint256)",
 ];
 
 export default function Carrier() {
   const [tokenId, setTokenId] = useState("1");
-  const [toAddr, setToAddr] = useState("");
-  const [loc, setLoc] = useState("PTOPO");
-  const [status, setStatus] = useState("idle");
+  const [toAddr, setToAddr]   = useState("");
+  const [loc, setLoc]         = useState("PTOPO");
+  const [status, setStatus]   = useState("idle");
 
-  async function takeAndForward() {
+  async function transfer() {
     try {
       setStatus("connecting...");
-      const nftAddr = process.env.NEXT_PUBLIC_CONSIGNMENT!;
-      const custodyAddr = process.env.NEXT_PUBLIC_CUSTODY!;
+      const addr = process.env.NEXT_PUBLIC_REGISTRY;
+      if (!addr) {
+        setStatus("error: NEXT_PUBLIC_REGISTRY not set in prototype/app/.env.local");
+        return;
+      }
+
       const { signer } = await getSigner();
-      const nft = new ethers.Contract(nftAddr, NFT_ABI, signer);
+      const registry = new ethers.Contract(addr, REGISTRY_ABI, signer);
 
-      setStatus("approving CustodyLedger...");
-      const a = await nft.setApprovalForAll(custodyAddr, true);
-      await a.wait();
-
-      const custody = new ethers.Contract(custodyAddr, CUSTODY_ABI, signer);
+      // QR-handshake nonce: in production, both parties co-sign a fresh nonce on
+      // physical handover. Here we hash the timestamp as a stand-in.
       const handshake = ethers.keccak256(ethers.toUtf8Bytes(`${Date.now()}`));
+
       setStatus("transferring custody...");
-      const tx = await custody.transferCustody(tokenId, toAddr, loc, handshake);
+      const tx = await registry.transferCustody(tokenId, toAddr, loc, handshake);
       await tx.wait();
-      const hops = await custody.hopCount(tokenId);
-      setStatus(`handover complete \u2713 (hop #${hops})`);
+      const hops = await registry.hopCount(tokenId);
+      setStatus(`handover complete ✓ (hop #${hops})`);
     } catch (err) {
       setStatus(`error: ${friendlyError(err)}`);
     }
@@ -48,13 +47,14 @@ export default function Carrier() {
         <a href="/" className="text-teal-700 text-sm hover:underline">&larr; Home</a>
         <h1 className="text-3xl font-bold text-teal-700 mt-2 mb-4">Carrier Dashboard</h1>
         <p className="text-slate-600 mb-6">
-          Accept custody and hand off to the next carrier. Recipient must hold a
-          valid <code>LicensedCarrier</code> Verifiable Credential.
+          Transfer custody to the next carrier. The recipient must hold an
+          active <code>LicensedCarrier</code> Verifiable Credential — the
+          contract enforces this; off-chain trust isn't required.
         </p>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
           <label className="block">
-            <span className="text-sm text-slate-700">Token ID</span>
+            <span className="text-sm text-slate-700">Consignment ID</span>
             <input value={tokenId} onChange={(e) => setTokenId(e.target.value)}
               className="mt-1 w-full border rounded-lg p-2" />
           </label>
@@ -70,7 +70,7 @@ export default function Carrier() {
               className="mt-1 w-full border rounded-lg p-2" />
           </label>
           <button
-            onClick={takeAndForward}
+            onClick={transfer}
             data-testid="transfer-btn"
             className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700"
           >

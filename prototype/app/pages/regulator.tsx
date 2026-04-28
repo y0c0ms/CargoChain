@@ -3,17 +3,16 @@ import { ethers } from "ethers";
 import { getSigner } from "../lib/signer";
 import { friendlyError } from "../lib/errors";
 
-const NFT_ABI = [
-  "function ownerOf(uint256 tokenId) view returns (address)",
-  "function getManifest(uint256 tokenId) view returns (tuple(string hbl,string originCode,string destCode,uint32 weightKg,string commodity,int16 tempMinTenthsC,int16 tempMaxTenthsC,uint64 mintedAt))",
-];
-const CUSTODY_ABI = [
-  "function historyOf(uint256 tokenId) view returns (tuple(address from,address to,uint64 timestamp,string locationUnLocode,bytes32 proofOfHandshake)[])",
-  "function hopCount(uint256 tokenId) view returns (uint256)",
+const REGISTRY_ABI = [
+  "function consignments(uint256) view returns (address shipper,address currentCustodian,uint8 status,bytes32 manifestHash,string manifestURI,uint64 createdAt)",
+  "function historyOf(uint256 id) view returns (tuple(address from,address to,uint64 timestamp,string locationUnLocode,bytes32 proofOfHandshake)[])",
+  "function hopCount(uint256 id) view returns (uint256)",
 ];
 const MERKLE_ABI = [
   "function batchesOf(uint256 tokenId) view returns (uint256[])",
 ];
+
+const STATUS = ["Created", "InTransit", "Delivered", "Disputed"];
 
 export default function Regulator() {
   const [tokenId, setTokenId] = useState("1");
@@ -25,32 +24,40 @@ export default function Regulator() {
       setStatus("fetching audit trail...");
       setAudit("");
       const { signer } = await getSigner();
-      const nft = new ethers.Contract(process.env.NEXT_PUBLIC_CONSIGNMENT!, NFT_ABI, signer);
-      const cust = new ethers.Contract(process.env.NEXT_PUBLIC_CUSTODY!, CUSTODY_ABI, signer);
-      const merkle = new ethers.Contract(process.env.NEXT_PUBLIC_MERKLE!, MERKLE_ABI, signer);
+      const registry = new ethers.Contract(process.env.NEXT_PUBLIC_REGISTRY!, REGISTRY_ABI, signer);
+      const merkle   = new ethers.Contract(process.env.NEXT_PUBLIC_MERKLE!,   MERKLE_ABI,   signer);
 
-      const [owner, manifest, history, batches] = await Promise.all([
-        nft.ownerOf(tokenId).catch(() => "?"),
-        nft.getManifest(tokenId).catch(() => null),
-        cust.historyOf(tokenId).catch(() => []),
+      const [c, history, batches] = await Promise.all([
+        registry.consignments(tokenId).catch(() => null),
+        registry.historyOf(tokenId).catch(() => []),
         merkle.batchesOf(tokenId).catch(() => []),
       ]);
 
       const lines: string[] = [];
-      lines.push(`Token ${tokenId}`);
-      lines.push(`Current custodian: ${owner}`);
-      if (manifest) {
-        lines.push(`HBL: ${manifest.hbl}`);
-        lines.push(`Route: ${manifest.originCode} -> ${manifest.destCode}`);
-        lines.push(`Weight: ${manifest.weightKg} kg`);
-        lines.push(`Commodity: ${manifest.commodity}`);
-        lines.push(`Temp range: ${Number(manifest.tempMinTenthsC)/10}\u00b0C to ${Number(manifest.tempMaxTenthsC)/10}\u00b0C`);
+      lines.push(`Consignment #${tokenId}`);
+      if (c && c.shipper !== ethers.ZeroAddress) {
+        lines.push(`Shipper          : ${c.shipper}`);
+        lines.push(`Current custodian: ${c.currentCustodian}`);
+        lines.push(`Status           : ${STATUS[Number(c.status)] ?? c.status}`);
+        lines.push(`Manifest hash    : ${c.manifestHash}`);
+        lines.push(`Manifest URI     : ${c.manifestURI}`);
+        lines.push(`Created          : ${new Date(Number(c.createdAt) * 1000).toISOString()}`);
+        lines.push(``);
+        lines.push(`Note: full manifest data lives off-chain at the URI.`);
+        lines.push(`      Fetch the JSON, hash it, and compare to the hash above`);
+        lines.push(`      to verify it has not been tampered with.`);
+      } else {
+        lines.push(`(no consignment with id ${tokenId})`);
       }
+      lines.push(``);
       lines.push(`Custody hops: ${history.length}`);
       for (const h of history) {
-        lines.push(`  ${new Date(Number(h.timestamp) * 1000).toISOString()}  ${h.locationUnLocode}  ${h.from.slice(0,8)}\u2026 -> ${h.to.slice(0,8)}\u2026`);
+        lines.push(`  ${new Date(Number(h.timestamp) * 1000).toISOString()}  ${h.locationUnLocode}  ${h.from.slice(0,8)}… → ${h.to.slice(0,8)}…`);
       }
+      lines.push(``);
       lines.push(`IoT batches anchored: ${batches.length}`);
+      for (const b of batches) lines.push(`  batch #${b}`);
+
       setAudit(lines.join("\n"));
       setStatus("done");
     } catch (err) {
@@ -64,13 +71,13 @@ export default function Regulator() {
         <a href="/" className="text-teal-700 text-sm hover:underline">&larr; Home</a>
         <h1 className="text-3xl font-bold text-teal-700 mt-2 mb-4">Regulator Dashboard</h1>
         <p className="text-slate-600 mb-6">
-          Full audit trail for any consignment. Shows custody, manifest, and
-          IoT anchor count &mdash; never the commercial pricing.
+          Full audit trail for any consignment. Shows custody, manifest hash,
+          and IoT-anchor count — all readable by anyone, no permissions needed.
         </p>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
           <label className="block">
-            <span className="text-sm text-slate-700">Token ID</span>
+            <span className="text-sm text-slate-700">Consignment ID</span>
             <input value={tokenId} onChange={(e) => setTokenId(e.target.value)}
               className="mt-1 w-full border rounded-lg p-2" />
           </label>

@@ -1,15 +1,20 @@
 import { ethers } from "hardhat";
+import * as fs   from "fs";
+import * as path from "path";
 
 /**
- * Seed the local chain with demo state so every UI dashboard has something to
- * act on. Registers DIDs for the first 3 Hardhat accounts and issues a
- * LicensedCarrier VC to account[1]. Also mints FRT to the shipper.
+ * Seed the local chain with demo state.
  *
- * Contract addresses MUST match the latest deploy output; read them from the
- * env so this script stays in sync with `.env.local`.
+ * Steps:
+ *   1. Register DIDs for deployer, carrier, and shipper accounts
+ *   2. Approve deployer as trusted LicensedCarrier issuer  (audit fix H-1)
+ *   3. Issue a LicensedCarrier VC to account[1] (carrier)
+ *   4. Approve deployer as trusted IoT oracle             (audit fix H-2)
+ *   5. Create demo consignment #1 (shipper signs the tx — public-chain spirit)
+ *
+ * Note: only the manifest hash is on-chain; full data lives in the event log
+ *       and at the off-chain `manifestURI`.
  */
-import * as fs from "fs";
-import * as path from "path";
 
 function readAddr(key: string): string {
   const envPath = path.join(__dirname, "..", "app", ".env.local");
@@ -22,72 +27,79 @@ function readAddr(key: string): string {
 async function main() {
   const [deployer, carrier, shipper] = await ethers.getSigners();
 
-  const didAddr = readAddr("NEXT_PUBLIC_DID_REGISTRY");
-  const credAddr = readAddr("NEXT_PUBLIC_CARRIER_CRED");
-  const ftAddr = readAddr("NEXT_PUBLIC_FREIGHT_TOKEN");
-
-  const dids = await ethers.getContractAt("DIDRegistry", didAddr);
-  const creds = await ethers.getContractAt("CarrierCredential", credAddr);
-  const ft = await ethers.getContractAt("FreightToken", ftAddr);
+  const dids     = await ethers.getContractAt("DIDRegistry",         readAddr("NEXT_PUBLIC_DID_REGISTRY"));
+  const creds    = await ethers.getContractAt("CarrierCredential",   readAddr("NEXT_PUBLIC_CARRIER_CRED"));
+  const registry = await ethers.getContractAt("ConsignmentRegistry", readAddr("NEXT_PUBLIC_REGISTRY"));
+  const merkle   = await ethers.getContractAt("MerkleIoT",           readAddr("NEXT_PUBLIC_MERKLE"));
 
   console.log("Accounts:");
   console.log("  deployer =", deployer.address);
   console.log("  carrier  =", carrier.address);
   console.log("  shipper  =", shipper.address);
 
-  // Register DIDs (skip if already registered)
+  // ── 1. Register DIDs ─────────────────────────────────────────────────────
   for (const s of [deployer, carrier, shipper]) {
-    const active = await dids.isActive(s.address);
-    if (!active) {
+    if (!(await dids.isActive(s.address))) {
       const docHash = ethers.keccak256(ethers.toUtf8Bytes(`did-doc-${s.address}`));
-      const tx = await dids.connect(s).register(docHash, `ipfs://did/${s.address}`);
-      await tx.wait();
+      await (await dids.connect(s).register(docHash, `ipfs://did/${s.address}`)).wait();
       console.log("  registered DID for", s.address);
     } else {
       console.log("  DID already active for", s.address);
     }
   }
 
-  // Approve deployer as a trusted LicensedCarrier issuer (audit fix H-1)
-  const alreadyApproved = await creds.approvedIssuer(0, deployer.address);
-  if (!alreadyApproved) {
-    const tx = await creds.connect(deployer).setApprovedIssuer(0, deployer.address, true);
-    await tx.wait();
+  // ── 2. Approve trusted issuer (H-1) ──────────────────────────────────────
+  if (!(await creds.approvedIssuer(0, deployer.address))) {
+    await (await creds.connect(deployer).setApprovedIssuer(0, deployer.address, true)).wait();
     console.log("  approved deployer as LicensedCarrier issuer");
   }
 
-  // Issue LicensedCarrier VC to the carrier account (schema 0)
+  // ── 3. Issue LicensedCarrier VC to carrier ────────────────────────────────
   const vcHash = ethers.keccak256(ethers.toUtf8Bytes(`vc-carrier-${carrier.address}`));
   try {
-    const tx = await creds.connect(deployer).issueVC(carrier.address, 0, vcHash, 0, 0);
-    await tx.wait();
+    await (await creds.connect(deployer).issueVC(carrier.address, 0, vcHash, 0, 0)).wait();
     console.log("  issued LicensedCarrier VC to", carrier.address);
   } catch (e) {
     if (e instanceof Error && e.message.includes("AlreadyIssued")) {
       console.log("  LicensedCarrier VC already issued");
-    } else {
-      throw e;
-    }
+    } else throw e;
   }
 
-  // Approve deployer as a trusted IoT oracle (audit fix H-2)
-  const merkleAddr = readAddr("NEXT_PUBLIC_MERKLE");
-  const merkle = await ethers.getContractAt("MerkleIoT", merkleAddr);
-  const oracleApproved = await merkle.approvedOracle(deployer.address);
-  if (!oracleApproved) {
-    const tx = await merkle.connect(deployer).setApprovedOracle(deployer.address, true);
-    await tx.wait();
+  // ── 4. Approve trusted IoT oracle (H-2) ──────────────────────────────────
+  if (!(await merkle.approvedOracle(deployer.address))) {
+    await (await merkle.connect(deployer).setApprovedOracle(deployer.address, true)).wait();
     console.log("  approved deployer as IoT oracle");
   }
 
-  // Mint FRT to the shipper so it can fund escrows
-  const mintTx = await ft.connect(deployer).mint(shipper.address, ethers.parseEther("1000000"));
-  await mintTx.wait();
-  console.log("  minted 1,000,000 FRT to shipper");
+  // ── 5. Create demo consignment #1 ────────────────────────────────────────
+  // Shipper signs their own consignment creation — no operator gating.
+  const manifest = {
+    hbl: "HBL-2026-042",
+    originCode: "PTLIS",
+    destCode: "AOLAD",
+    weightKg: 1200,
+    commodity: "PHARMACEUTICAL_VACCINE_CLASS_2",
+    tempMinTenthsC: 20,
+    tempMaxTenthsC: 80,
+  };
+  const manifestJson = JSON.stringify(manifest);
+  const manifestHash = ethers.keccak256(ethers.toUtf8Bytes(manifestJson));
+  if ((await registry.nextId()) === 1n) {
+    await (await registry.connect(shipper).createConsignment(
+      manifestHash,
+      "ipfs://manifest/HBL-2026-042"
+    )).wait();
+    console.log("  created consignment #1 (shipper-signed)");
+    console.log("  manifest hash:", manifestHash);
+  } else {
+    console.log("  consignment #1 already exists");
+  }
 
-  console.log("\nSeed targets (paste these into UI when prompted):");
-  console.log("  Carrier address:", carrier.address);
-  console.log("  Shipper address:", shipper.address);
+  console.log("\n── Ready ───────────────────────────────────────────────────────────");
+  console.log("  Carrier address :", carrier.address);
+  console.log("  Shipper address :", shipper.address);
+  console.log("\nTo start the IoT oracle simulator:");
+  console.log(`  MERKLE_ADDR=${await merkle.getAddress()} TOKEN_ID=1 npm run oracle:sim`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

@@ -1,6 +1,8 @@
 # PROJECT PLAN — GX: CargoChain
 
-## Blockchain-Based Multi-Modal Logistics Platform with SSI-Verified Stakeholders and ZKP-Preserved Commercial Privacy
+## Public-Chain Multi-Modal Logistics Platform with SSI-Verified Stakeholders and IoT Data Integrity
+
+
 
 > **Course:** Blockchain & DLT — ISCTE
 > **Use Case:** 3 — Transportation (Shipping, Logistics, Airlines, Railways)
@@ -11,17 +13,30 @@
 
 ## 1. Executive Summary
 
-**CargoChain** is an end-to-end logistics platform that tokenises **every
-container / consignment** as an NFT, anchors its custody chain on a permissioned
-enterprise blockchain, and uses **Self-Sovereign Identity (SSI)** to authenticate
-every stakeholder (shippers, carriers, customs, inspectors, ports, airlines,
-railways). Commercially sensitive data (price, counterparties, route) is kept
-private using **Zero-Knowledge Proofs** that still let regulators and insurers
-verify compliance (temperature kept, weight respected, no customs violations)
-without seeing the underlying data.
+**CargoChain** is a logistics platform built on a **public EVM chain**
+(Ethereum Sepolia, with local Hardhat for development) that registers each container/consignment as a
+unique on-chain entity, authenticates every stakeholder via Self-Sovereign
+Identity (DIDs + W3C Verifiable Credentials), and anchors IoT sensor batches
+as Merkle roots so any individual reading can be cryptographically verified
+on-chain by anyone.
 
-One sentence: ***A "FedEx-tracking" page, but trustless, cross-border, and
-privacy-preserving by cryptographic construction.***
+The architecture deliberately avoids three patterns that the industry's
+recent track record shows do not scale:
+
+1. **Permissioned consortium chains** — TradeLens, we.trade, Marco Polo,
+   Contour, B3i, and ASX CHESS all failed in 2022–2023, every one of them
+   running on Hyperledger Fabric, R3 Corda, or a custom permissioned stack.
+2. **ERC-721 as a data store** — NFTs are designed for token ownership.
+   Embedding manifest data inside an NFT struct misuses the standard and
+   forces expensive on-chain storage.
+3. **On-chain payment for cargo** — adds escrow, ZK, and dispute-resolution
+   complexity orthogonal to the actual blockchain-data-integrity question.
+
+See [CASE_STUDIES.md](CASE_STUDIES.md) for the full evidence behind these
+choices.
+
+One-sentence pitch: ***A "FedEx-tracking" page, but trustless, public, and
+cryptographically auditable end-to-end.***
 
 ---
 
@@ -30,14 +45,14 @@ privacy-preserving by cryptographic construction.***
 Global logistics suffers from four chronic pains the course technologies fix
 one-for-one:
 
-| Pain                                           | Blockchain answer (concept from map)                                           |
-|------------------------------------------------|--------------------------------------------------------------------------------|
-| Paper Bills of Lading, forgery, lost docs      | **Verifiable Credentials** (W3C VCs) + **DIDs** + on-ledger hash anchor        |
-| "Where is my container?" opacity               | **NFT per container** (ERC-721), milestone events on-chain                     |
-| Trust between 20+ parties that don't know each other | **Permissioned DLT** + **BFT consensus** (instant finality)              |
-| Carriers don't want to reveal pricing / routes | **ZKPs** (zk-SNARKs) — prove "temperature ≤ 4 °C all trip" without route data  |
-| Slow customs release → demurrage fees          | **Smart contract escrow** — releases payment on delivery proof, auto customs   |
-| Insurance fraud ("cargo was damaged at port X")| **Oracle-fed IoT** sensor data, **Merkle-batched proofs**                      |
+| Pain                                              | Blockchain answer (concept from map)                                |
+|---------------------------------------------------|---------------------------------------------------------------------|
+| Paper Bills of Lading, forgery, lost docs         | **Verifiable Credentials** (W3C VCs) + **DIDs** + on-ledger hash anchor |
+| "Where is my container?" opacity                  | **On-chain consignment registry** + custody handover events         |
+| Trust between 20+ parties that don't know each other | **Public DLT** + **PoS finality** — no operator to trust         |
+| Carriers don't trust each other's IoT data        | **Merkle-batched proofs** — any reading can be verified on-chain    |
+| Insurance fraud ("cargo was damaged at port X")   | **Oracle-fed IoT** sensor data, **Merkle-batched proofs**           |
+| Slow customs release                              | **VC-gated** custody handovers — instant verification               |
 
 Every problem above is a direct instance of a node in the T1-T6 concept map.
 
@@ -48,58 +63,67 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
 ### In scope — demo-able features
 
 1. **Actor onboarding with SSI**
-   - Shipper, Carrier, Customs, Port authority each get a **DID** (method: `did:ethr`)
+   - Shipper, Carrier, Customs each get a **DID** anchored on-chain
    - Issue a **Verifiable Credential** ("Licensed Carrier — Maersk — valid until …")
-   - Wallet stores the VC (simulated Aries-style wallet)
-2. **Consignment tokenisation**
-   - Shipper mints an **ERC-721 NFT** representing a container (metadata: HBL-ID,
-     weight, origin, destination, commodity class)
-   - NFT owner = current custodian (handoff transfers ownership on-chain)
+   - Allowlisted issuers (audit fix H-1)
+2. **Consignment registration**
+   - Shipper signs `createConsignment(manifestHash, manifestURI)` directly — no operator gating
+   - The full manifest JSON lives off-chain at `manifestURI`; only its
+     keccak256 hash is on-chain
+   - State machine: `Created → InTransit → Delivered`
 3. **Custody transfer flow**
-   - Carrier scans QR → calls `transferCustody(tokenId, toDID)` on-chain
-   - Event emitted, front-end timeline updates in real time
+   - Carrier calls `transferCustody(id, to, location, handshake)`
+   - Recipient must hold an active `LicensedCarrier` VC — enforced by the contract
+   - Custody history is appended on-chain
 4. **IoT oracle feed**
-   - Mock temperature / GPS sensor pushes signed payloads every 30 s
-   - Smart contract stores **Merkle root** of sensor batch, not each reading
-5. **ZKP-gated release**
-   - At delivery, carrier submits a **zk-SNARK** that proves "all 2 400 temperature
-     readings ≤ 4 °C" without revealing the readings
-   - Smart-contract verifier accepts proof → **escrow payment released** automatically
+   - Mock temperature / GPS sensor pushes signed payloads every 1 s
+   - Smart contract stores **Merkle root** of each 8-reading batch
+   - Allowlisted oracles only (audit fix H-2)
+5. **On-chain IoT verification**
+   - Simulation dashboard subscribes to `BatchAnchored` events
+   - Any reading + its Merkle proof can be verified on-chain
+   - Tampered readings or wrong proofs are rejected (audit test H-3)
 6. **Auditor view**
-   - Regulator queries any consignment and sees: full DID chain, compliance booleans,
-     proof-of-delivery Merkle root — but no commercial pricing
+   - Regulator queries any consignment and sees: shipper, current custodian,
+     status, manifest hash, manifest URI, full custody hop list, IoT batch count
 
 ### Out of scope (honest)
 
 - Real IoT hardware (we mock the sensor stream)
-- Mainnet deployment (local Hardhat + Sepolia testnet only)
 - Full legal framework for cross-border Bill of Lading recognition
 - Production-grade Aries agents (we implement a simplified VC/DID flow)
+- **On-chain payment** (originally in scope; removed per professor feedback)
+- **ZK escrow** (same)
+- **ERC-721 token wrapper** (replaced with a plain registry per professor feedback)
 
 ---
 
 ## 4. Technology Choices — and Why Each Maps to the Concept Map
 
-| Layer                | Choice                                         | T1-T6 node exercised                                |
-|----------------------|------------------------------------------------|-----------------------------------------------------|
-| Blockchain runtime   | **Hyperledger Besu** (private IBFT 2.0)        | Enterprise DLT · BFT · Besu · IBFT                  |
-| + parallel public    | **Ethereum Sepolia testnet**                   | Public BC · PoS finality                            |
-| Smart-contract lang  | **Solidity 0.8.24**                            | Solidity · ERC-721 · ERC-20 · Purpose-driven        |
-| Contract standards   | **ERC-721 (NFT)**, ERC-20 (freight coin)       | Token Standards · Tokenisation · NFT                |
-| Consensus (demo net) | **IBFT 2.0** (Besu), **PoS** (Sepolia)         | Consensus · BFT · Finality (instant vs determ.)     |
-| Identity             | **did:ethr** (Ethereum-anchored DIDs)          | SSI · DIDs · DID Document · Verifiable Data Registry|
-| Credentials          | **W3C Verifiable Credentials v2**              | VCs · VC Lifecycle · Holder/Issuer/Verifier         |
-| Wallet (user-side)   | MetaMask (keys) + IndexedDB (VC store)         | Wallet · Public-key cryptography · Hot wallet       |
-| Privacy              | **zk-SNARKs** via **circom 2 + snarkjs**       | ZKP · Non-interactive · zk-SNARKs · Selective discl.|
-| Off-chain proofs     | **Merkle trees** for IoT batches               | Merkle · Hash · Data integrity                      |
-| Oracle               | Custom signed-payload oracle (own implementation) | Oracle · Off-chain data · Future Trends          |
-| Scaling (discussion) | Optimistic rollup + sharding (analysis slide)  | Rollups · Sharding · Scaling Hub                    |
-| Front-end            | **Next.js 14 + React + ethers.js**             | (delivery vehicle for dApp)                         |
-| IoT simulator        | Node.js generator → signs payloads with Ed25519 | Public-key crypto · Non-repudiation                |
+| Layer                  | Choice                                            | T1-T6 node exercised                                |
+|------------------------|---------------------------------------------------|-----------------------------------------------------|
+| Blockchain runtime     | **Ethereum Sepolia** (public PoS testnet)         | Public BC · DLT · Block · Tx · P2P                  |
+| Local dev environment  | **Hardhat node**                                  | Block · Tx · Mempool                                |
+| Smart-contract lang    | **Solidity 0.8.26**                               | Solidity · Smart Contract · Purpose-driven          |
+| Contract design        | Plain registry, **no token standard**             | Smart Contract · State Machine · Tokenisation (discussion) |
+| Consensus              | **PoS** (Ethereum)                                 | PoS · Validators · Slashing · Finality              |
+| Identity               | DIDs anchored as `address → docHash`              | SSI · DIDs · DID Document · Verifiable Data Registry|
+| Credentials            | **W3C Verifiable Credentials v2**                  | VCs · VC Lifecycle · Issuer/Holder/Verifier         |
+| Wallet (user-side)     | MetaMask + dev-signer fallback                    | Wallet · Public-key cryptography · Hot wallet       |
+| Off-chain proofs       | **Merkle trees** for IoT batches                  | Merkle · Hash · Data integrity                      |
+| Oracle                 | Custom signed-payload oracle (Ed25519, m-of-n)    | Oracle · Off-chain data · Non-repudiation           |
+| Scaling (discussion)   | Optimistic rollup + sharding (analysis slide)     | Rollups · Sharding · Scaling Hub                    |
+| Front-end              | **Next.js 14 + React + ethers.js v6**             | (delivery vehicle for the dApp)                     |
+| IoT simulator          | Node.js generator → signs payloads with Ed25519    | Public-key crypto · Non-repudiation                 |
 
-**Consensus coverage trick:** by running two chains (Besu-IBFT + Sepolia-PoS) plus a
-slide comparing PoW/PoS/DPoS/PoH/BFT/Avalanche, we *legitimately* exercise the whole
-T3 family.
+**Removed from earlier versions** (with rationale):
+
+| Removed                  | Why                                                          |
+|--------------------------|--------------------------------------------------------------|
+| Hyperledger Besu / IBFT  | TradeLens et al. proved permissioned chains have a structural adoption problem (see CASE_STUDIES.md) |
+| ERC-721 ConsignmentNFT   | The token standard's transfer semantics don't model physical custody handovers; storing manifest data on-chain misuses storage |
+| FreightEscrow + FreightToken | Payment isn't the course's core blockchain content       |
+| circom / snarkjs / ZK escrow | ZK was tied to payment; without payment, IoT integrity via Merkle proofs covers the same "verify without revealing" theme |
 
 ---
 
@@ -108,29 +132,29 @@ T3 family.
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     FRONT-END (Next.js + ethers.js)                 │
-│   Shipper UI · Carrier UI · Customs UI · Regulator UI · Public view │
+│  Shipper UI · Carrier UI · Customs UI · Simulation UI · Regulator   │
 └───────────────┬───────────────────────────────┬─────────────────────┘
                 │                               │
                 ▼                               ▼
 ┌───────────────────────────┐   ┌──────────────────────────────────┐
-│  SSI LAYER (off-chain)    │   │       ORACLE & ZKP SERVICE        │
+│  SSI LAYER (off-chain)    │   │       ORACLE & VERIFY SERVICE     │
 │  - DID resolver           │   │  - IoT simulator (temp/GPS)       │
-│  - VC issuer / verifier   │   │  - Merkle batcher                 │
-│  - Wallet (IndexedDB)     │   │  - snarkjs prover                 │
+│  - VC issuer / verifier   │   │  - Merkle batcher + proof export  │
+│  - Wallet (IndexedDB)     │   │  - JSON files for browser fetch   │
 └──────────┬────────────────┘   └──────────────┬───────────────────┘
            │                                   │
            ▼                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    SMART CONTRACTS (Solidity)                       │
-│   DIDRegistry · CarrierCredential (VC anchor) · ConsignmentNFT      │
-│   CustodyLedger · MerkleIoT · ZKVerifier · FreightEscrow (ERC-20)   │
+│                    SMART CONTRACTS (4 Solidity files)               │
+│       DIDRegistry · CarrierCredential · ConsignmentRegistry         │
+│                          · MerkleIoT                                │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
                 ┌──────────────┴────────────────┐
                 ▼                               ▼
       ┌────────────────────┐        ┌────────────────────┐
-      │   BESU (IBFT 2.0)  │        │  SEPOLIA (Eth PoS) │
-      │  Permissioned net  │        │   Public testnet   │
+      │ Local Hardhat (dev)│        │ Ethereum Sepolia   │
+      │ instant blocks     │        │ (public PoS, ~12s) │
       └────────────────────┘        └────────────────────┘
 ```
 
@@ -141,30 +165,43 @@ Application → Modelling → Contract → Data → Network.
 
 ## 6. Approach / Methodology
 
-1. **Design Science Research** — we build an IT artefact (the platform) that solves
-   a demonstrated industry problem, then evaluate against defined criteria.
-2. **Concept-first mapping** — every engineering choice is backed by a node in the
-   T1-T6 concept map (traceability matrix kept in `TECH_MAPPING.md`).
-3. **Iterative prototyping** — two sprints before intermediate, three before final.
-4. **Evaluation criteria** — (a) coverage of concepts, (b) demo success, (c) gas cost
-   of one custody transfer, (d) proof-generation time, (e) UX of a non-technical user
-   (we test with a volunteer outside the team).
+1. **Design Science Research** — we build an IT artefact (the platform) that
+   solves a demonstrated industry problem, then evaluate against defined criteria.
+2. **Concept-first mapping** — every engineering choice is backed by a node
+   in the T1-T6 concept map (traceability matrix in [TECH_MAPPING.md](TECH_MAPPING.md)).
+3. **Case-study grounding** — every architectural choice has a precedent in
+   [CASE_STUDIES.md](CASE_STUDIES.md). Permissioned-chain failure modes drove
+   the public-chain decision; production deployments (CargoX on Ethereum,
+   OriginTrail on multi-chain DKG) validate the public-chain pattern.
+4. **TDD discipline** — every audit finding has a regression test before the fix.
+5. **Evaluation criteria** — (a) coverage of concepts, (b) demo success,
+   (c) gas cost of one custody handover, (d) Merkle verify gas, (e) UX of a
+   non-technical user.
 
 ---
 
-## 7. State of the Art — Quick Literature Anchor
+## 7. State of the Art
 
-| Project / Paper                      | What they did                              | What we take / leave                    |
-|--------------------------------------|--------------------------------------------|-----------------------------------------|
-| **TradeLens** (Maersk + IBM, 2018-22)| Permissioned BC for shipping docs          | ← Took private-channel model; left shutdown lesson: need lighter governance  |
-| **Marco Polo Network** (R3 Corda)    | Trade finance on Corda                     | Inspired CorDapp flow pattern            |
-| **IATA ONE Record**                  | API standard for air cargo                 | Data model for AWB fields               |
-| **GSBN** (Global Shipping Business Network) | Consortium ledger                    | Governance model reference              |
-| **VeChain, Ambrosus**                | IoT + BC supply chain                      | Oracle signing pattern                  |
-| Dujak et al. 2024 — *Blockchain in logistics: SLR* | Academic synthesis             | Benchmark criteria                      |
-| Helo & Hao 2019 — *BC applications in SCM* | Use-case taxonomy                    | Cold-chain cluster                       |
-| IATA 2023 — *eAWB adoption*          | 80 % adoption by 2025                      | Motivates VC model                      |
-| Kshetri 2018 — *1 Blockchain roles in logistics* | Six-role framework               | Frames our "why DLT"                    |
+A comprehensive review of 14 platforms (6 failures, 8 survivors) lives in
+[CASE_STUDIES.md](CASE_STUDIES.md) with primary sources for every claim.
+
+The headline takeaways:
+
+- **Failures (2022-2023):** TradeLens (Maersk + IBM), we.trade (12 EU banks),
+  Marco Polo (R3 + 30 banks), Contour (R3 + 9 banks), B3i (insurance
+  consortium), ASX CHESS (securities settlement). All on permissioned DLT.
+  All killed by the same mechanic: insufficient adoption to justify
+  member-dues funding while waiting for competitors to join.
+- **Survivors:** IBM Food Trust (Walmart mandate), VeChain (public chain,
+  BMW + Walmart China), GSBN (post-TradeLens, neutral non-profit), MediLedger
+  (anchored to DSCSA legal mandate), WaveBL + **CargoX** (eBL — CargoX runs
+  on **public Ethereum** and processes 3 million+ documents across 100+
+  countries), OriginTrail (public DKG, deployed at Swiss Federal Railways),
+  Komgo (last surviving trade-finance consortium).
+
+The pattern is unambiguous: public chains + adoption forcing functions
+(regulatory mandate or commercial pressure) survive; permissioned consortiums
+funded by member dues fail. CargoChain takes the public-chain stance.
 
 ---
 
@@ -175,7 +212,7 @@ Application → Modelling → Contract → Data → Network.
 | Project lead / architect             | S1      | Coherence, slides, report, state of art     |
 | Smart-contract engineer              | S2      | Solidity contracts, tests, gas analysis     |
 | SSI / DID & VC engineer              | S3      | DID registry, issuer/verifier, wallet       |
-| ZKP & cryptography engineer          | S4      | Circom circuits, snarkjs integration, Merkle|
+| IoT / oracle engineer                | S4      | Oracle simulator, Merkle batcher, simulation page |
 | Front-end & UX                       | S5      | Next.js dashboards, demo video              |
 
 (4-person group: merge S4 into S2. 3-person group: merge S5 into S1 + S3.)
@@ -186,31 +223,39 @@ Application → Modelling → Contract → Data → Network.
 
 Placeholder — to be filled from measurements:
 
-- Custody transfer gas cost: `~___ k gas` on Besu, `~___` on Sepolia
-- zk-SNARK proof generation: `___ s` on an average laptop
-- Verification on-chain: `~300 k gas` (one Groth16 pairing)
-- Concept-map coverage: **≥ 40 / 74 nodes** exercised in code or demo
-- UX: non-technical tester completed a full "book → deliver → audit" journey in under `___` min
+- Custody handover gas cost: ~155 k gas on Hardhat (measured)
+- Consignment creation gas: ~148 k gas (measured)
+- IoT batch anchor gas: ~166 k gas (measured)
+- IoT batch verify gas: <30 k gas (constant-cost view function)
+- Concept-map coverage: see TECH_MAPPING.md for full matrix
+- UX: non-technical tester completed a full "create → handover → verify → audit" journey in under `___` min
 
 ---
 
 ## 10. Main Challenges (already anticipated)
 
-1. **Trusted setup** for zk-SNARKs — mitigate by using a Powers-of-Tau ceremony
-2. **Oracle trust problem** — signed payloads + multiple oracle attestations
-3. **Key management UX** — seed phrases scare users; we layer social-recovery hints
+1. **Public-chain block latency** — Sepolia's 12 s blocks make a live demo
+   feel slower than local Hardhat. Mitigation: run the live demo on local
+   Hardhat (instant blocks); link to a Sepolia tx hash in the slides as
+   public-chain proof.
+2. **Oracle trust problem** — signed payloads + multiple oracle attestations + on-chain allowlist (H-2 fix).
+3. **Key management UX** — seed phrases scare users; the dev-signer fallback
+   means the demo works without MetaMask. Production would need WalletConnect
+   + social recovery.
 4. **Legal recognition** — Bill of Lading is MLETR-only in a few jurisdictions;
-   we discuss on the "challenges" slide rather than claim to solve it
-5. **Cross-chain interoperability** — Besu ↔ Sepolia bridge is out of scope for demo
+   we discuss on the "challenges" slide rather than claim to solve it.
+5. **DID Document tampering** — fixed (H-4), the resolver re-hashes and rejects mismatches.
 
 ---
 
 ## 11. Remaining Work (intermediate → final)
 
-- [ ] Build all 7 smart contracts and reach 90 % line coverage on tests
-- [ ] Implement ZKP circuit for temperature compliance
-- [ ] Wire oracle simulator + IndexedDB wallet
-- [ ] Build 4 role-specific dashboards in Next.js
+- [x] Build all smart contracts (4 of them) and reach 90 % line coverage on tests
+- [x] Wire oracle simulator + Merkle proof export
+- [x] Build 5 role-specific dashboards in Next.js (incl. live Simulation page)
+- [x] Run a security audit and fix all H-severity findings
+- [x] Compile 14-case-study state-of-the-art document
+- [ ] Deploy to Sepolia and capture transaction hashes for the slides
 - [ ] Record 3-minute demo video
 - [ ] Write 15-20 page report `GX-report.pdf`
 - [ ] Rehearse presentation × 2 (time-box to 15 min)
@@ -235,45 +280,46 @@ Placeholder — to be filled from measurements:
 
 | Risk                                             | Likelihood | Impact | Mitigation                                    |
 |--------------------------------------------------|------------|--------|-----------------------------------------------|
-| ZKP circuit doesn't compile in time              | Medium     | High   | Have fallback: plaintext proof + hash anchor  |
+| Public-chain RPC outage during demo              | Medium     | High   | Live demo runs on local Hardhat anyway        |
 | Team member drops out                            | Low        | High   | Roles documented, every component has a buddy |
 | Demo fails live                                  | Medium     | High   | Pre-recorded backup video of the full flow    |
-| Scope creep (try to implement Hyperledger Aries) | High       | Med    | Explicitly out of scope; simulate VC-issuance |
+| Sepolia faucet rate-limits the deploy            | Low        | Med    | Multiple faucets exist (Alchemy, Infura, PoW) |
 
 ---
 
 ## 14. Repository Structure
 
 ```
-BlockChain Proj/
-├── PROJECT_PLAN.md          ← this file
-├── TECH_MAPPING.md          ← concept map ↔ feature matrix
-├── ARCHITECTURE.md          ← diagrams & component detail
-├── USER_STORIES.md          ← 18 actor-goal-value stories
-├── SECURITY.md              ← audit report (5 findings, 9 regression tests)
-├── README.md                ← dev setup & run instructions
+CargoChain/
+├── README.md               ← entry point
+├── docs/
+│   ├── SETUP.md            ← install, deploy, seed, run, test
+│   ├── PROJECT_PLAN.md     ← this file
+│   ├── ARCHITECTURE.md     ← layered diagram, contract details
+│   ├── TECH_MAPPING.md     ← T1-T6 concept-map traceability
+│   ├── USER_STORIES.md     ← actor-goal stories
+│   ├── SECURITY.md         ← threat model + audit findings
+│   └── CASE_STUDIES.md     ← 14 industry case studies with sources
 └── prototype/
-    ├── contracts/           ← 9 Solidity files (incl. mock ZK verifier)
-    ├── circuits/            ← circom ZK circuit (cold_chain)
-    ├── scripts/             ← deploy + seed + IoT oracle simulator
-    ├── test/                ← Hardhat tests (CargoChain · Errors · E2E · Security)
-    ├── app/                 ← Next.js dashboards (5 role views) + lib helpers
+    ├── contracts/          ← 4 Solidity files
+    ├── scripts/            ← deploy + seed + IoT oracle simulator
+    ├── test/               ← 15 Hardhat tests
+    ├── app/                ← Next.js 14 dashboards (5 roles)
     └── hardhat.config.ts
 ```
 
 ## 15. Verification & Testing
 
-Run the full suite (18 tests):
+Run the full suite:
 
 ```
 cd prototype && npx hardhat test
+# 15 passing
 ```
-
-Tests are organised by purpose so the report can cite them by file:
 
 | File                         | Cases | Purpose                                            |
 |------------------------------|-------|----------------------------------------------------|
-| `test/CargoChain.test.ts`    | 2     | Happy-path mint + custody; negative path on unlicensed recipient |
-| `test/Errors.test.ts`        | 5     | Custom-error selectors + decoder used by all 5 dashboards |
-| `test/E2E.test.ts`           | 1     | Full shipper → carrier → customs → receiver → regulator flow with gas measurements |
-| `test/Security.test.ts`      | 10    | One regression per audit finding (H-1, H-2, H-3, H-4, M-2) |
+| `test/CargoChain.test.ts`    | 2     | Happy-path create + custody + delivery; unlicensed-recipient negative |
+| `test/Errors.test.ts`        | 5     | Custom-error selectors + decoder used by every dashboard |
+| `test/E2E.test.ts`           | 1     | Full 5-dashboard flow with gas measurements + IoT verification |
+| `test/Security.test.ts`      | 7     | Audit regressions: H-1, H-2, H-3 (IoT integrity)   |

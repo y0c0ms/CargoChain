@@ -2,19 +2,22 @@ import Link from "next/link";
 
 export default function Home() {
   const dashboards = [
-    { href: "/shipper",   name: "Shipper",   desc: "Mint consignments, fund escrow" },
-    { href: "/carrier",   name: "Carrier",   desc: "Accept custody, transfer on" },
-    { href: "/customs",   name: "Customs",   desc: "Verify VCs, allow crossing" },
-    { href: "/receiver",  name: "Receiver",  desc: "Accept delivery, submit ZK proof" },
-    { href: "/regulator", name: "Regulator", desc: "Audit custody chain + compliance" },
+    { href: "/shipper",    name: "Shipper",    desc: "Create a consignment (manifest hash anchored on-chain)" },
+    { href: "/carrier",    name: "Carrier",    desc: "Take custody, hand off to next carrier" },
+    { href: "/customs",    name: "Customs",    desc: "Verify a Verifiable Credential by schema" },
+    { href: "/simulation", name: "Simulation", desc: "Live IoT batches + on-chain Merkle proof verification" },
+    { href: "/regulator",  name: "Regulator",  desc: "Full audit trail for any consignment" },
   ];
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-teal-50 to-cyan-50 p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold text-teal-800 mb-2">CargoChain</h1>
-        <p className="text-slate-600 mb-8">
-          Blockchain-based multi-modal logistics platform with SSI + ZKP.
+        <p className="text-slate-600 mb-2">
+          Public-chain logistics platform: SSI-authenticated stakeholders, custody
+          tracking, and IoT data integrity verifiable by anyone.
+        </p>
+        <p className="text-slate-500 text-sm mb-8">
           Pick a role to open its dashboard.
         </p>
 
@@ -32,7 +35,7 @@ export default function Home() {
         </div>
 
         <div className="mt-10 text-xs text-slate-500">
-          Demo prototype · Group GX · ISCTE Blockchain & DLT · T1–T6
+          Demo prototype · Group GX · ISCTE Blockchain &amp; DLT · T1–T6
         </div>
       </div>
     </main>

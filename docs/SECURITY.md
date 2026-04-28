@@ -1,15 +1,25 @@
 # SECURITY REVIEW — CargoChain
 
-> **Scope:** all Solidity contracts + scripts/oracle simulator + Next.js front-end libs.
+> **Scope:** all 4 Solidity contracts + scripts/oracle simulator + Next.js front-end libs.
 > **Approach:** read-through of each module → identify trust boundaries → enumerate
 > what an adversary controls at each one → write a failing test → patch the code →
 > re-run the suite. Every fix below has a one-to-one test in
 > [`prototype/test/Security.test.ts`](../prototype/test/Security.test.ts).
-> **Test count after fixes:** **18 passing** across `CargoChain.test.ts`,
+> **Test count after fixes:** **15 passing** across `CargoChain.test.ts`,
 > `Errors.test.ts`, `E2E.test.ts`, `Security.test.ts`.
-> **Design constraint:** keep code simple — this is a course prototype, the report
-> matters more than over-engineering. Each fix is one allowlist or one extra `if`,
-> not a separate role-based access framework.
+
+> **Scope changes (April 2026):** The original audit identified five findings
+> (H-1 through M-2). After the professor-driven scope reduction (no payment,
+> no ZK escrow, no ERC-721), three findings changed status:
+> - **H-3** was about ZK proof binding on FreightEscrow → that contract is gone.
+>   The H-3 slot is now filled with a different but equally important property:
+>   **on-chain Merkle proof verification of IoT readings**. Same severity, same
+>   "data integrity under adversarial input" theme.
+> - **H-4** (DID Document hash check) was implemented as a front-end resolver
+>   helper that no demo page actually called. Rather than keep dead code, we
+>   deleted it and demoted H-4 to a documented threat in the "Designed but
+>   not implemented" section below — honest about the gap.
+> - **M-2** (refund-after-custody) is gone with the escrow.
 
 ---
 
@@ -17,7 +27,7 @@
 
 | Tag    | Meaning                                                               |
 |--------|-----------------------------------------------------------------------|
-| 🔴 H   | Trust model is broken — adversary can mint VCs, fake IoT, replay proofs, or steal funds |
+| 🔴 H   | Trust model is broken — adversary can mint VCs, fake IoT, forge data  |
 | 🟠 M   | Behaviour is wrong but adversary needs a special precondition         |
 | 🟢 L   | Defence-in-depth, hardening, code smell                               |
 | ⚪ Info | Documented limitation by design (demo trade-off)                      |
@@ -28,13 +38,12 @@
 
 ### 🔴 H-1 · Anyone could issue any Verifiable Credential (FIXED)
 
-**Location:** [`CarrierCredential.sol`](../prototype/contracts/CarrierCredential.sol)
-`issueVC`
+**Location:** [`CarrierCredential.sol`](../prototype/contracts/CarrierCredential.sol) `issueVC`
 
-**Before:** the only check was `dids.isActive(msg.sender)` — i.e. *any* DID-active
-address could issue itself or a friend a `LicensedCarrier` VC and bypass every
-custody check downstream. The whole point of SSI on-chain (US-03) is that
-verifiers trust the *issuer*, not just any caller.
+**Before:** the only check was `dids.isActive(msg.sender)` — i.e. *any*
+DID-active address could issue itself or a friend a `LicensedCarrier` VC and
+bypass every custody check downstream. The whole point of SSI on-chain is
+that verifiers trust the *issuer*, not just any caller.
 
 **Attack:** Mallory registers her DID, calls
 `issueVC(mallory, LicensedCarrier, ...)`, and now `subjectHasActiveVC` returns
@@ -58,8 +67,8 @@ arbitrary Merkle root for any consignment's `tokenId`, breaking the integrity
 guarantees the architecture document promises.
 
 **Attack:** Mallory reads on-chain `BatchAnchored` events, races a real oracle
-with a forged root, and submits a ZK proof against her own data — escrow
-releases despite cold-chain breach.
+with a forged root, and the regulator dashboard happily reports the (forged)
+batch as anchored.
 
 **Fix:** owner-managed `approvedOracle[address] = bool` + setter. `anchorBatch`
 reverts with `NotOracle()` if `msg.sender` isn't on the list.
@@ -69,74 +78,69 @@ reverts with `NotOracle()` if `msg.sender` isn't on the list.
 
 ---
 
-### 🔴 H-3 · ZK proof not bound to (tokenId, batchId) → replay (FIXED)
+### 🔴 H-3 · IoT data integrity — Merkle proof verification (NEW)
 
-**Location:** [`FreightEscrow.sol`](../prototype/contracts/FreightEscrow.sol)
-`releaseWithProof`
+**Location:** [`MerkleIoT.sol`](../prototype/contracts/MerkleIoT.sol) `verifyReading`
 
-**Before:** the function took a Groth16 proof + `publicIn[]` array and forwarded
-them to the verifier. The proof's *content* was not bound to the consignment
-it claimed to release. An attacker who once produced a valid compliance proof
-for shipment X could replay it against shipment Y (or against the same X
-multiple times if the verifier was idempotent).
+**Property under test:** given a batch's anchored Merkle root, anyone must be
+able to prove on-chain that a specific reading *was* part of that batch — and
+the verification must reject any tampered reading or wrong sibling path.
 
-**Attack:** carrier saves a successful `releaseWithProof` calldata for shipment
-1, then calls the same function for shipment 2 (which actually had a cold-chain
-breach) — the same proof bytes are accepted because nothing checks the proof's
-public inputs match shipment 2's batch root.
+**Why this matters:** the off-chain oracle exports each batch's readings + a
+Merkle proof per reading to `prototype/app/public/oracle-batches/batch-N.json`.
+The Simulation dashboard reads that JSON and lets users click "Verify". If
+`verifyReading` accepted any leaf — or if it accepted any proof path — the
+whole "you can audit individual sensor readings" claim falls apart.
 
-**Fix:** `releaseWithProof` now also takes a `batchId`. The escrow looks up the
-batch's `merkleRoot` and `tokenId` via a new `MerkleIoT.rootOf(batchId)`
-helper. Two new reverts:
+**Implementation:** sorted-pair Merkle proof verification (compatible with
+OpenZeppelin's `MerkleProof.verify` and the oracle's `keccak_256`-based
+tree). Constant-gas verification path; ~30 k gas for an 8-leaf batch.
 
-- `BatchNotForThisShipment()` — `batches[batchId].tokenId != tokenId`
-- `ProofNotBoundToBatch()` — `publicIn[2] != uint256(batches[batchId].merkleRoot)`
-
-The Receiver dashboard now exposes a "IoT Batch ID" field and pre-fetches the
-on-chain root to populate `publicIn` correctly.
-
-**Test:** `Security.test.ts → "H-3 ZK proof must be bound to (tokenId, batchId)"`
-(2 cases).
+**Test:** `Security.test.ts → "H-3 IoT data integrity (Merkle proof verification)"`
+(2 cases — valid leaf+proof returns true; tampered leaf or wrong sibling returns false).
 
 ---
 
-### 🔴 H-4 · DID Document fetched without hash check (FIXED)
+## Designed but not implemented (honest gap)
 
-**Location:** [`app/lib/did-resolver.ts`](../prototype/app/lib/did-resolver.ts)
-`resolveDID`
+### 🟠 H-4 · DID Document fetched without hash check
 
-**Before:** the resolver fetched the DID Document URI (typically IPFS or
-HTTPS), `JSON.parse`d it, and returned it. The on-chain `documentHash` was
-returned alongside but never compared — a malicious gateway, hijacked DNS, or
-swapped IPFS pin could serve a forged document with a fresh signing key, and
-the verifier would happily authenticate VCs against it.
+**Threat:** a real production system would fetch DID Documents from off-chain
+gateways (IPFS or HTTPS). A malicious gateway, hijacked DNS, or swapped IPFS
+pin could serve a forged document with a fresh signing key, and the verifier
+would happily authenticate VCs against it.
 
-**Fix:** read the response as text, recompute `keccak256(toUtf8Bytes(text))`,
-compare to the on-chain `documentHash`, throw with a descriptive message on
-mismatch *before* parsing. The original guarantee (the registry is the source
-of truth, not the gateway) is now actually enforced.
+**Mitigation pattern:** read the response as text, recompute
+`keccak256(toUtf8Bytes(text))`, compare to the on-chain `documentHash`, throw
+on mismatch *before* parsing. The on-chain registry is the source of truth.
 
-**Test:** `Security.test.ts → "H-4 DID Document hash mismatch is detected"`
-(documents the keccak invariant the implementation enforces).
+**Demo status:** **not implemented.** Our demo dashboards reference DIDs by
+Ethereum address directly and don't fetch off-chain DID Document JSON, so the
+attack surface doesn't exist in the running code. The earlier version had a
+`did-resolver.ts` helper that enforced the hash check, but no UI page called
+it — dead code. We removed it rather than ship a fix to a function the demo
+never reaches.
+
+A production deployment would (a) build a UI that resolves DIDs to Documents,
+and (b) reuse the keccak256-comparison pattern shown above. The on-chain
+primitives (`DIDRegistry.documentHash`) already support it.
 
 ---
 
-### 🟠 M-2 · Shipper could refund mid-shipment, denying carrier payment (FIXED)
+## Obsolete after scope change (kept for historical record)
 
-**Location:** [`FreightEscrow.sol`](../prototype/contracts/FreightEscrow.sol) `refund`
+### ⚪ H-3 (original) · ZK proof not bound to (tokenId, batchId)
 
-**Before:** any time before release/refund, the shipper could call `refund(tokenId)`
-and recover their FRT — even after the carrier had taken physical custody and
-incurred costs. Race condition: shipper monitors mempool, fronts the
-`releaseWithProof` tx with a `refund` tx in the same block.
+Was a finding against `FreightEscrow.releaseWithProof`. With FreightEscrow
+removed (no payment in scope), this finding no longer applies. The original
+fix was good (binding the proof's public inputs to the on-chain batch root)
+and informed the design of the current H-3 IoT-integrity test.
 
-**Fix:** require `consignment.ownerOf(tokenId) == shipper` for refund. Once
-the NFT has moved to a carrier (via `transferCustody`), `CarrierAlreadyHasCustody`
-reverts. Funds are committed for the duration of carriage, just like a real
-freight booking.
+### ⚪ M-2 · Shipper could refund mid-shipment
 
-**Test:** `Security.test.ts → "M-2 Refund denied once carrier has custody"`
-(2 cases — pre-handover allowed, post-handover blocked).
+Was a finding against `FreightEscrow.refund`. With the escrow gone, no longer
+applies. The original fix was a `consignment.ownerOf(tokenId) == shipper`
+check.
 
 ---
 
@@ -160,7 +164,7 @@ the client bundle. The fallback dev signer in
 demo with no MetaMask. The key is a Hardhat default — never use it on a live
 network. README and the report explicitly call this out.
 
-### 🟢 L-1 · Wallet stores VCs unencrypted in IndexedDB
+### 🟢 L-1 · VC wallet stores credentials unencrypted in IndexedDB
 
 **Status:** acknowledged.
 **Reasoning:** browser-extension wallets (MetaMask) and proper SSI agents
@@ -168,31 +172,13 @@ network. README and the report explicitly call this out.
 that. Future work: encrypt with a user-derived key (e.g. PBKDF2 over a
 passphrase) before storage.
 
-### 🟢 L-2 · `MockZKVerifier` accepts any non-zero merkle root
-
-**Status:** explicit mock — replaced by snarkjs-generated `ZKVerifier.sol`
-once the trusted-setup ceremony completes.
-**Reasoning:** the real Groth16 verifier is generated from
-[`circuits/cold_chain.circom`](../prototype/circuits/cold_chain.circom) by
-`snarkjs zkey export solidityverifier`. Until that runs, the mock lets the
-rest of the stack be tested. **The H-3 fix limits the blast radius:** even with
-the permissive mock, an attacker can't replay a proof against a different
-shipment because the binding is enforced *outside* the verifier.
-
-### 🟢 L-3 · `vc-issuer.verifyVCSignature` parses DIDs naively
+### 🟢 L-3 · Naive DID parsing in front-end helpers
 
 **Status:** known.
 **Reasoning:** uses `did.split(":").pop()` to get the address. Adequate for
-our `did:cargochain:<chainId>:<addr>` format. A general-purpose resolver
+our demo's `did:cargochain:<chainId>:<addr>` format. A general-purpose resolver
 should follow the [W3C DID Method spec](https://www.w3.org/TR/did-core/) and
 handle methods like `did:web` or `did:ion`.
-
-### 🟢 L-4 · `FreightToken.mint` is owner-only inflation
-
-**Status:** demo trade-off.
-**Reasoning:** in production, `FreightToken` would be replaced by an existing
-stablecoin (USDC, EURe). For the demo it's a simple ERC-20 the deployer mints
-to seed the shipper's wallet. README + report flag this.
 
 ---
 
@@ -203,7 +189,6 @@ to seed the shipper's wallet. README + report flag this.
                 │  CONTRACT OWNER (deployer / future multisig) │
                 │  - approves issuers (per VC schema)          │
                 │  - approves IoT oracles                      │
-                │  - controls FreightToken minting (demo)      │
                 └────────────────┬─────────────────────────────┘
                                  │ setApprovedIssuer / setApprovedOracle
                                  ▼
@@ -213,42 +198,42 @@ to seed the shipper's wallet. README + report flag this.
        └──────────┬───────────┘            └────────────┬────────────┘
                   │ issueVC                              │ anchorBatch
                   ▼                                      ▼
-      ┌────────────────────────┐             ┌────────────────────────┐
-      │ CarrierCredential.sol  │             │ MerkleIoT.sol          │
-      │ - per-schema allowlist │             │ - per-address allowlist│
-      └──────────┬─────────────┘             └────────────┬───────────┘
-                 │  isValid / subjectHasActiveVC          │  rootOf
-                 ▼                                        ▼
-      ┌────────────────────────┐  binds proof to  ┌──────────────────────┐
-      │ CustodyLedger.sol      │ ──────────────► │ FreightEscrow.sol     │
-      │ - VC-gated handover    │ (tokenId,batch) │ - replay-safe release │
-      │ - ownership invariants │                  │ - refund pre-custody │
-      └────────────────────────┘                  └──────────────────────┘
+      ┌────────────────────────┐             ┌──────────────────────────┐
+      │ CarrierCredential.sol  │             │ MerkleIoT.sol            │
+      │ - per-schema allowlist │             │ - per-address allowlist  │
+      │ - VC lifecycle         │             │ - verifyReading() public │
+      └──────────┬─────────────┘             └────────────┬─────────────┘
+                 │  isValid / subjectHasActiveVC          │  read-only,
+                 ▼                                        │  no auth needed
+      ┌─────────────────────────────────┐                 ▼
+      │ ConsignmentRegistry.sol         │       ┌──────────────────────┐
+      │ - public createConsignment      │       │ Anyone can verify    │
+      │ - VC-gated transferCustody      │       │ any reading          │
+      │ - state-machine invariants      │       └──────────────────────┘
+      └─────────────────────────────────┘
 ```
 
 ---
 
 ## TDD evidence
 
-Every fix above is asserted by a regression test. The mapping:
+Every fix above is asserted by a regression test:
 
-| Finding | File:line                                            | Test (`describe` block)                                          |
-|---------|------------------------------------------------------|------------------------------------------------------------------|
-| H-1     | `CarrierCredential.sol:33-69`                        | `H-1 Untrusted issuers cannot mint VCs` (3 it-blocks)            |
-| H-2     | `MerkleIoT.sol:18-39`                                | `H-2 Untrusted oracles cannot anchor IoT batches` (2)            |
-| H-3     | `FreightEscrow.sol:60-83`                            | `H-3 ZK proof must be bound to (tokenId, batchId)` (2)           |
-| H-4     | `app/lib/did-resolver.ts:75-90`                      | `H-4 DID Document hash mismatch is detected` (1)                 |
-| M-2     | `FreightEscrow.sol:96-104`                           | `M-2 Refund denied once carrier has custody` (2)                 |
-| Decoder errors visible to user | `app/lib/errors.ts`              | `Errors.test.ts` (5)                                              |
-| Negative custody | `CustodyLedger.sol`                          | `CargoChain.test.ts → "blocks custody transfer..."` (1)          |
-| Full happy path  | all contracts                                | `E2E.test.ts → "full flow"` (1)                                  |
+| Finding                  | File                                | Test (`describe` block)                                  |
+|--------------------------|-------------------------------------|----------------------------------------------------------|
+| H-1                      | `CarrierCredential.sol`             | `H-1 Untrusted issuers cannot mint VCs` (3 cases)        |
+| H-2                      | `MerkleIoT.sol`                     | `H-2 Untrusted oracles cannot anchor IoT batches` (2)    |
+| H-3 (IoT integrity)      | `MerkleIoT.sol`                     | `H-3 IoT data integrity (Merkle proof verification)` (2) |
+| Decoder errors visible   | `app/lib/errors.ts`                 | `Errors.test.ts` (5)                                     |
+| Negative custody         | `ConsignmentRegistry.sol`           | `CargoChain.test.ts → "blocks custody transfer..."` (1)  |
+| Full happy path + IoT    | all 4 contracts                     | `E2E.test.ts → "full flow"` (1)                          |
 
 Run the suite:
 
 ```bash
 cd prototype
 npx hardhat test
-# 18 passing
+# 15 passing
 ```
 
 ---
@@ -258,9 +243,12 @@ npx hardhat test
 Add one slide between *"Main Findings"* and *"Challenges"* titled
 **"Threat model + audit"**, with three bullets:
 
-- **5 attacks we hardened against** (H-1 through M-2) — each in one sentence
-- **9 dedicated security tests** prove the fixes can't regress
-- **Trust boundaries** diagram from this file
+- **3 attacks we hardened against** (H-1, H-2, H-3 IoT) — each in one sentence
+- **7 dedicated security tests** prove the fixes can't regress
+- **One documented but unimplemented threat** (H-4 DID Document tampering) —
+  with the mitigation pattern explained, just not wired into the demo
 
-That answers the obvious examiner question *"what stops Mallory from issuing
-herself a LicensedCarrier VC?"* in 30 seconds with a runnable test as proof.
+Mention that **two original findings (H-3 escrow, M-2) are obsolete** because
+the payment scope was removed. Treat that as a maturity signal, not a
+concession — *"we removed an attack surface entirely"* is a stronger position
+than *"we hardened it"*.

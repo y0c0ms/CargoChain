@@ -23,19 +23,13 @@ const errorIface = new ethers.Interface([
   "error AlreadyIssued()",
   "error NotIssuer()",
   "error VCNotFound()",
-  // CustodyLedger
+  // ConsignmentRegistry
+  "error UnknownConsignment()",
+  "error ShipperNotActive()",
   "error NotCurrentCustodian()",
   "error RecipientNotLicensed()",
   "error RecipientNotActive()",
-  // FreightEscrow
-  "error AlreadyFunded()",
-  "error NotFunded()",
-  "error AlreadySettled()",
-  "error NotReceiverYet()",
-  "error ZKProofInvalid()",
-  "error BatchNotForThisShipment()",
-  "error ProofNotBoundToBatch()",
-  "error CarrierAlreadyHasCustody()",
+  "error AlreadyDelivered()",
   // Access control (H-1, H-2)
   "error IssuerNotApproved()",
   "error NotOracle()",
@@ -43,12 +37,14 @@ const errorIface = new ethers.Interface([
 ]);
 
 const FRIENDLY: Record<string, string> = {
+  // DIDRegistry
   NotRegistered:
     "The address has no DID registered on-chain. Register it first.",
   AlreadyRegistered:
     "This address already has a DID registered.",
   Revoked:
     "This DID has been revoked and can no longer be used.",
+  // CarrierCredential
   IssuerNotActive:
     "The issuer DID is not active (unregistered or revoked).",
   SubjectNotActive:
@@ -59,28 +55,20 @@ const FRIENDLY: Record<string, string> = {
     "Only the original issuer can revoke this credential.",
   VCNotFound:
     "The requested Verifiable Credential is not on-chain.",
+  // ConsignmentRegistry
+  UnknownConsignment:
+    "No consignment exists with that ID.",
+  ShipperNotActive:
+    "Only an address with an active DID can create a consignment.",
   NotCurrentCustodian:
-    "You are not the current custodian of this consignment — only the current owner can transfer it.",
+    "You are not the current custodian — only the holder can transfer or mark delivered.",
   RecipientNotLicensed:
-    "The recipient is a registered DID but does not hold an active LicensedCarrier Verifiable Credential.",
+    "The recipient is registered but does not hold an active LicensedCarrier Verifiable Credential.",
   RecipientNotActive:
     "The recipient address is not registered as an active DID.",
-  AlreadyFunded:
-    "An escrow for this tokenId already exists — cannot fund again.",
-  NotFunded:
-    "No escrow has been funded for this tokenId yet.",
-  AlreadySettled:
-    "This escrow has already been released or refunded.",
-  NotReceiverYet:
-    "The consignment has not yet reached the final receiver.",
-  ZKProofInvalid:
-    "The cold-chain compliance zero-knowledge proof did not verify.",
-  BatchNotForThisShipment:
-    "The IoT batch you referenced belongs to a different consignment.",
-  ProofNotBoundToBatch:
-    "The proof's Merkle root doesn't match the on-chain batch root — proof not bound to this shipment.",
-  CarrierAlreadyHasCustody:
-    "Cannot refund — a carrier has already taken custody. Funds are committed until delivery.",
+  AlreadyDelivered:
+    "This consignment has already been marked Delivered — no further transfers allowed.",
+  // Access control
   IssuerNotApproved:
     "This issuer is not on the approved-issuer allowlist for that credential schema.",
   NotOracle:
@@ -122,6 +110,5 @@ export function friendlyError(err: unknown): string {
 
   // 3) Last resort
   const m = err instanceof Error ? err.message : String(err);
-  // Strip the noisy transaction dump that ethers appends
   return m.split(" (action=")[0];
 }

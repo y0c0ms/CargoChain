@@ -1,7 +1,14 @@
 # ARCHITECTURE — CargoChain
 
-System architecture, layer-by-layer, with mapping to the **Blockchain Reference
+System architecture, layer-by-layer, mapped to the **Blockchain Reference
 Architecture (Abed et al. 2023)** presented in T2.
+
+The architecture was simplified after the case-study evidence in
+[CASE_STUDIES.md](CASE_STUDIES.md) showed that every major permissioned-chain
+logistics platform (TradeLens, we.trade, Marco Polo, Contour, B3i) failed
+between 2022 and 2023. Payment, ZK escrow, and the ERC-721 token wrapper were
+also dropped — they added complexity without addressing the actual course
+material.
 
 ---
 
@@ -11,58 +18,54 @@ Architecture (Abed et al. 2023)** presented in T2.
 ┌──────────────────────────────────────────────────────────────────────┐
 │  APPLICATION LAYER  (Next.js 14 · React · ethers.js · Tailwind)      │
 │                                                                      │
-│   ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐         │
-│   │Shipper │  │Carrier │  │Customs │  │Receiver│  │Regulator│        │
-│   │  UI    │  │  UI    │  │  UI    │  │  UI    │  │   UI   │         │
-│   └───┬────┘  └───┬────┘  └───┬────┘  └───┬────┘  └────┬───┘         │
-│       └───────────┴───────────┴───────────┴────────────┘             │
+│   ┌────────┐  ┌────────┐  ┌────────┐  ┌──────────┐  ┌─────────┐      │
+│   │Shipper │  │Carrier │  │Customs │  │Simulation│  │Regulator│      │
+│   │  UI    │  │  UI    │  │  UI    │  │   UI     │  │   UI    │      │
+│   └───┬────┘  └───┬────┘  └───┬────┘  └────┬─────┘  └────┬────┘      │
+│       └───────────┴───────────┴────────────┴─────────────┘           │
 │                              │                                       │
 ├──────────────────────────────┼───────────────────────────────────────┤
 │  MODELLING LAYER             │                                       │
-│     Flows: Mint → Assign DID → Issue VC → TakeCustody                │
-│            → IoT Batch → ProveCompliance → ReleaseEscrow             │
+│     Flows: Register DID → Issue VC → Create Consignment              │
+│            → TransferCustody → AnchorIoTBatch → VerifyReading        │
+│            → MarkDelivered                                           │
 │                                                                      │
-│     Multi-party state machines modelled as Solidity modifiers        │
+│     State machine: Created → InTransit → Delivered (Disputed)        │
 ├──────────────────────────────────────────────────────────────────────┤
-│  CONTRACT LAYER  (7 Solidity contracts)                              │
+│  CONTRACT LAYER  (4 Solidity contracts)                              │
 │                                                                      │
-│  ┌────────────┐ ┌──────────────┐ ┌────────────────┐ ┌─────────────┐  │
-│  │DIDRegistry │ │CarrierCreden-│ │ConsignmentNFT  │ │CustodyLedger│  │
-│  │            │ │tial (VC anch)│ │(ERC-721)       │ │             │  │
-│  └─────┬──────┘ └──────┬───────┘ └───────┬────────┘ └──────┬──────┘  │
-│        │               │                 │                 │         │
-│        └──────┬────────┴────────┬────────┴─────────────────┘         │
-│               ▼                 ▼                                    │
-│      ┌────────────┐      ┌────────────┐    ┌──────────────────┐      │
-│      │ MerkleIoT  │◄────►│ZKVerifier  │    │  FreightEscrow   │      │
-│      │            │      │(Groth16)   │    │  (ERC-20 payout) │      │
-│      └─────┬──────┘      └─────┬──────┘    └────────┬─────────┘      │
-│            │                   │                    │                │
-├────────────┼───────────────────┼────────────────────┼────────────────┤
-│  DATA LAYER│                   │                    │                │
-│            ▼                   ▼                    ▼                │
+│  ┌────────────┐ ┌──────────────┐ ┌─────────────────────┐             │
+│  │DIDRegistry │ │CarrierCreden-│ │ConsignmentRegistry  │             │
+│  │            │ │tial (VC anch)│ │ (state + custody)   │             │
+│  └─────┬──────┘ └──────┬───────┘ └──────────┬──────────┘             │
+│        │               │                    │                        │
+│        └───────┬───────┴────────────────────┘                        │
+│                ▼                                                     │
+│      ┌──────────────────────────┐                                    │
+│      │ MerkleIoT                │                                    │
+│      │ (anchor + verifyReading) │                                    │
+│      └──────────────┬───────────┘                                    │
+├──────────────────────┼───────────────────────────────────────────────┤
+│  DATA LAYER          │                                               │
+│                      ▼                                               │
 │   ┌─────────────────────────────────────────────────────┐            │
 │   │         BLOCKS / TRANSACTIONS / STATE               │            │
 │   │  (keccak256 tx merkle root per block)               │            │
 │   └─────────────────────────────────────────────────────┘            │
 ├──────────────────────────────────────────────────────────────────────┤
-│  NETWORK LAYER                                                       │
+│  NETWORK LAYER  — public EVM only                                    │
 │                                                                      │
-│   ┌──────────────────────┐  ┌───────────────────────────┐            │
-│   │ Besu (IBFT 2.0)      │  │ Ethereum Sepolia (PoS)    │            │
-│   │ 4 validator nodes    │  │ Public testnet            │            │
-│   │ Permissioned         │  │ Permissionless            │            │
-│   │ Instant finality     │  │ Deterministic finality    │            │
-│   └──────────────────────┘  └───────────────────────────┘            │
+│   ┌─────────────────────────┐  ┌────────────────────────────────┐    │
+│   │ Local Hardhat (dev)     │  │ Ethereum Sepolia (public demo) │    │
+│   │ instant blocks          │  │ public PoS, ~12 s blocks       │    │
+│   │ deterministic accounts  │  │ free testnet ETH via faucet    │    │
+│   └─────────────────────────┘  └────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────────┘
 
     OFF-CHAIN SIDECARS (not in reference architecture layering)
   ┌────────────────────────────┐    ┌────────────────────────────────┐
-  │ IoT Oracle Simulator       │    │ ZK Prover Service              │
-  │ (Node.js, Ed25519 signed)  │    │ (snarkjs WASM in browser)      │
-  └────────────────────────────┘    └────────────────────────────────┘
-  ┌────────────────────────────┐    ┌────────────────────────────────┐
-  │ VC Wallet (IndexedDB)      │    │ DID Resolver + cache           │
+  │ IoT Oracle Simulator       │    │ Manifest JSON (IPFS / HTTPS)   │
+  │ (Node.js, Ed25519 signed)  │    │ hashed on-chain, fetched on UI │
   └────────────────────────────┘    └────────────────────────────────┘
 ```
 
@@ -71,108 +74,85 @@ Architecture (Abed et al. 2023)** presented in T2.
 ## 2. Smart-Contract Details
 
 ### 2.1 `DIDRegistry.sol`
-- Maps `address` → `DIDDocument` (JSON-LD stored as `bytes`)
-- Functions: `register()`, `updateDocument()`, `resolve(did)`, `revoke()`
+
+- Maps `address` → `DIDEntry { documentHash, documentURI, createdAt, updatedAt, revoked }`
+- Anyone can self-register their DID — no operator gating
+- Functions: `register(hash, uri)`, `updateDocument(...)`, `revoke()`, `resolve(addr)`, `isActive(addr)`
 - Events: `DIDRegistered`, `DIDUpdated`, `DIDRevoked`
-- Concept nodes: DID · DID Document · Verifiable Data Registry
+- **Security note:** the off-chain DID resolver (`app/lib/did-resolver.ts`)
+  must re-hash the fetched document and compare to `documentHash` — the H-4
+  fix in `SECURITY.md`.
+- Concept nodes: DID · DID Document · Verifiable Data Registry · Decentralization
 
 ### 2.2 `CarrierCredential.sol`
-- Anchors the **hash of a Verifiable Credential** on-chain
-- Stores: issuer DID, subject DID, schema ID, VC hash, not-before, expiry
-- Functions: `issueVC(subject, schemaId, vcHash, expiry)`, `revokeVC()`, `isValid(vcHash)`
-- Concept nodes: Verifiable Credentials · VC Lifecycle · On-ledger anchors
 
-### 2.3 `ConsignmentNFT.sol`
-- Inherits OpenZeppelin `ERC721URIStorage`
-- Each token = a physical container / consignment
-- Metadata URI points to IPFS-style JSON: `{hbl, originPort, destPort, weightKg, commodity, tempRange}`
-- Functions: `mintConsignment(to, metadataURI)`, `burn(tokenId)`
-- Concept nodes: NFT · ERC-721 · Tokenisation · Smart Contract
+- Anchors the **hash of a Verifiable Credential** on-chain (W3C VC v2)
+- Stores: issuer DID, subject DID, schema, vcHash, notBefore, expiry, revoked
+- Schemas: `LicensedCarrier`, `CustomsOfficer`, `PharmaGrade`, `PortOperator`, `InspectorAuthority`
+- Functions: `setApprovedIssuer(schema, addr, bool)` (owner), `issueVC(...)`, `revokeVC(...)`,
+  `subjectHasActiveVC(subject, schema)`, `isValid(vcHash)`
+- **H-1 protection:** issuer allowlist per schema. Without this, anyone with
+  a DID could mint themselves any VC.
+- Concept nodes: Verifiable Credentials · VC Lifecycle · Issuer/Holder/Verifier · On-ledger anchors
 
-### 2.4 `CustodyLedger.sol`
-- Maps `tokenId` → current custodian DID
-- Function: `transferCustody(tokenId, toDID, proofOfHandshake)` — requires both
-  parties' signatures (EIP-712 typed data)
-- Verifies that `toDID` holds a valid VC of type `LicensedCarrier`
-- Event: `CustodyTransferred(tokenId, fromDID, toDID, timestamp)`
-- Concept nodes: Custody · Smart Contract · Identity+Smart-Contract integration
+### 2.3 `ConsignmentRegistry.sol`
 
-### 2.5 `MerkleIoT.sol`
-- Accepts a Merkle root for a batch of IoT readings every N blocks
-- Stores: `batchId` → `merkleRoot`, `firstTimestamp`, `lastTimestamp`, `count`
-- Off-chain tool builds the tree from signed sensor payloads
-- Concept nodes: Merkle · Hash · Oracle · Batched anchor
+The merger of the previous `ConsignmentNFT` + `CustodyLedger`. **Not** an
+ERC-721 — see the contract header for the rationale.
 
-### 2.6 `ZKVerifier.sol` (auto-generated)
-- Produced by `snarkjs zkey export solidityverifier`
-- Function `verifyProof(a, b, c, publicInputs)` → returns `bool`
-- Called by `FreightEscrow` to release funds on valid compliance proof
-- Concept nodes: ZKP · zk-SNARKs · Non-interactive · Groth16
+- Stores: `Consignment { shipper, currentCustodian, status, manifestHash, manifestURI, createdAt }`
+- Stores: `Handover[]` log per consignment id
+- Status state machine: `Created → InTransit → Delivered`
+- Anyone with an active DID can `createConsignment(manifestHash, uri)` — no operator gating
+- `transferCustody(...)` requires recipient to (a) have an active DID and (b) hold a `LicensedCarrier` VC
+- `markDelivered(...)` callable only by the current custodian
+- Read helpers: `custodianOf(id)`, `historyOf(id)`, `hopCount(id)`
+- Concept nodes: Smart Contract · Custody · Immutability · Identity + SC ·
+  Events (audit trail) · Hash · Data Integrity · State Machine
 
-### 2.7 `FreightEscrow.sol`
-- ERC-20 wrapper around an "FRT" payment token
-- Shipper locks funds keyed to `tokenId`; released atomically on:
-  1. Final-leg custody transfer reaching destination DID **AND**
-  2. Valid ZK proof of compliance accepted by `ZKVerifier`
-- Concept nodes: Escrow · ERC-20 · Smart Contract · Atomic settlement
+### 2.4 `MerkleIoT.sol`
+
+- Accepts a Merkle root for a batch of off-chain IoT readings
+- Stores: `Batch { tokenId, merkleRoot, readingCount, firstTs, lastTs, submitter }`
+- `verifyReading(batchId, leaf, proof[])` — **anyone** can prove on-chain that
+  a specific reading was part of an anchored batch
+- **H-2 protection:** oracle allowlist (`approvedOracle` mapping). Only
+  approved IoT oracle addresses can call `anchorBatch`.
+- Saves ~99 % of gas vs. writing every reading on-chain.
+- Concept nodes: Merkle Tree · Hash · Oracle · Scaling (batching) · Data Integrity
 
 ---
 
 ## 3. SSI Data Flow
 
 ```
- Issuer (e.g. Licensing Authority DID)
+ Issuer DID (e.g. Licensing Authority)
      │  signs VC → hashes VC → calls CarrierCredential.issueVC(...)
      ▼
-Verifiable Data Registry (Besu chain)   —   public, anchored
+Verifiable Data Registry (public chain)   —   anyone can read
      │
      │  {issuer DID, subject DID, schema, vcHash, expiry}
      ▼
- Holder (Carrier DID)  ← stores full VC off-chain in wallet
+ Holder DID (Carrier)  ← stores full VC off-chain in their wallet
      │
-     │  When taking custody: signs message with DID key,
-     │  provides VC to verifier
+     │  When taking custody: signs handover transaction.
+     │  The contract's transferCustody() checks the recipient's VC.
      ▼
- Verifier (CustodyLedger.sol)
-     │  1) resolves issuer DID
-     │  2) checks vcHash on-chain via CarrierCredential
-     │  3) verifies holder signature with DID key
+ Verifier (ConsignmentRegistry.transferCustody)
+     │  1) dids.isActive(to)
+     │  2) creds.subjectHasActiveVC(to, LicensedCarrier)
+     │  → revert if either fails
      ▼
- Custody transfer accepted
+ Custody transfer accepted, event emitted, history appended
 ```
 
-**Selective disclosure**: when a regulator queries, they get the *boolean*
-result of `CarrierCredential.isValid(vcHash)` without reading the VC itself
-(which lives in the carrier's wallet only).
+**Selective disclosure:** when a regulator queries `subjectHasActiveVC`, they
+get the *boolean* result without ever reading the VC itself (which lives in
+the carrier's wallet only).
 
 ---
 
-## 4. ZKP Circuit (cold-chain compliance)
-
-### Inputs
-- **Private:** `readings[2400]` — array of signed temperature readings
-- **Public:** `lowerBound` (e.g. 20 → 2°C * 10), `upperBound` (80 → 8°C * 10),
-  `count` (2400), `merkleRoot` (on-chain reference)
-
-### Constraints
-1. Merkle root recomputed from private readings equals the public root
-2. For each reading `r[i]`: `lowerBound ≤ r[i] ≤ upperBound`
-
-### Tooling
-- **Circom 2** for the circuit
-- **snarkjs** for trusted setup (Powers-of-Tau phase 2 contribution) + Groth16
-- **WASM prover** runs in-browser (Web Worker) — no private data leaves client
-
-### Output
-- `π = (a, b, c)` ≈ 200 bytes
-- Verification on-chain costs ~286 k gas (constant, regardless of 2400 reads)
-
-**Concept nodes:** Zero-Knowledge Proofs · zk-SNARKs · Non-interactive ·
-Completeness · Soundness · Zero-Knowledge · Selective Disclosure · Merkle
-
----
-
-## 5. Oracle / IoT Pattern
+## 4. IoT Oracle + Merkle Verification Pattern
 
 ```
 ┌──────────────┐     Ed25519-sign     ┌──────────────────┐
@@ -182,57 +162,78 @@ Completeness · Soundness · Zero-Knowledge · Selective Disclosure · Merkle
                                                 │
                               m-of-n signature  ▼
                                       ┌─────────────────┐
-                                      │ MerkleBatch tool│
+                                      │ Merkle batcher  │
                                       └──────┬──────────┘
                                              │
                                  merkleRoot  ▼
-                                      ┌────────────────┐
-                                      │ MerkleIoT.sol  │
-                                      └────────────────┘
+                                      ┌──────────────────┐
+                                      │ MerkleIoT.sol    │ ← only the root on-chain
+                                      └──────┬───────────┘
+                                             │
+                                             ▼
+              JSON file written to            ▼ verifyReading(id, leaf, proof)
+              prototype/app/public/oracle-batches/batch-N.json
+              (raw readings + Merkle proofs per leaf)         ▲
+                                                              │
+                            ┌──── Simulation page ───────────┘
+                            │  - subscribes to BatchAnchored events
+                            │  - fetches batch JSON
+                            │  - clicks "Verify reading #N" → on-chain check
+                            └────────────────────────────────────
 ```
 
-- 3 oracle signers → must agree on batch before root is accepted
-- Individual readings remain off-chain (cost, privacy)
-- Merkle root lets anyone prove any particular reading was in the batch
-- Mapping: Oracle · Public-key crypto · Merkle · Non-repudiation
+- 3 oracle signers → m-of-n agreement before batch is accepted
+- Individual readings stay off-chain (cost + privacy)
+- The Merkle root lets *anyone* prove that any specific reading was in the batch
+- Mapping: Oracle · Public-key crypto · Merkle · Non-repudiation · Scaling Hub
 
 ---
 
-## 6. Consensus Choice Justification
+## 5. Consensus Choice Justification
 
-| Criterion               | IBFT 2.0 (Besu) | PoS (Sepolia)       | Why we pick |
-|-------------------------|-----------------|---------------------|-------------|
-| Finality                | Instant         | Deterministic (12 s)| Fast demo   |
-| Throughput              | ~1000 TPS       | ~15 TPS             | Realistic scale |
-| Energy                  | Very low        | Low                 | Good optics |
-| Permissioning           | Permissioned    | Permissionless      | Enterprise fit |
-| Live public comparison  | No              | Yes                 | Dual-chain for T3 coverage |
+| Criterion              | Sepolia (PoS)              | Local Hardhat            |
+|------------------------|----------------------------|--------------------------|
+| Finality               | ~12 s blocks, ~13 min final | Instant (deterministic) |
+| Throughput             | ~15 TPS                    | n/a (single-node)        |
+| Permissioning          | Permissionless             | Open                     |
+| Cost                   | Free (testnet ETH)         | Free                     |
+| Course-material match  | T3 PoS · Casper FFG · Validators | n/a                |
 
-We run **both chains simultaneously** so we can compare finality, throughput,
-gas, UX — one-for-one with T3 course content.
+Sepolia is the canonical Ethereum testnet — every survivor case study that
+operates on public Ethereum (CargoX, OriginTrail's Ethereum integration) is
+on this same chain at higher tier.
 
----
-
-## 7. Trust Assumptions
-
-1. **Validators (Besu):** majority of 4 validator nodes honest → BFT threshold (≥ 3 of 4)
-2. **Oracle signers:** m-of-n honest (m = 2, n = 3)
-3. **Trusted setup (zk-SNARKs):** at least one contributor in the Powers-of-Tau
-   ceremony was honest (standard assumption)
-4. **DID controllers:** each actor safeguards their DID private key (out-of-band
-   key-management; we recommend hardware wallets for production)
-
-Breaking any of these breaks the corresponding guarantee but not the whole system.
+We **deliberately removed** Hyperledger Besu / IBFT 2.0 from previous versions.
+The case studies (TradeLens, we.trade, Marco Polo, Contour, B3i) demonstrate
+that permissioned DLT is the failure mode the course should warn students
+about, not endorse. See [`CASE_STUDIES.md`](CASE_STUDIES.md).
 
 ---
 
-## 8. Deployment Targets
+## 6. Trust Assumptions
 
-| Environment  | Purpose               | URL / Access            |
-|--------------|-----------------------|-------------------------|
-| Local Besu   | Dev + intermediate demo | `http://localhost:8545` |
-| Sepolia      | Public showcase       | `sepolia.etherscan.io`  |
-| IPFS (mock)  | Metadata / NFT URIs   | Local IPFS node         |
-| Vercel       | Front-end preview     | `cargochain-gx.vercel.app` (placeholder) |
+1. **Public chain validators** — at least 2/3 of stake honest (standard PoS assumption)
+2. **Approved issuers (per VC schema)** — the contract owner curates the allowlist; 
+   in production this would be a multisig of regulators
+3. **Approved IoT oracles** — same allowlist mechanism, same governance question
+4. **DID controllers** — each actor safeguards their private key (out-of-band
+   key management; production would use hardware wallets)
+5. **Off-chain manifest gateway** — *not* trusted; the on-chain `manifestHash`
+   is the source of truth, the gateway just serves the document for hashing
 
-For the final demo day, run Besu locally; have Sepolia as redundant path.
+Breaking any of these breaks the corresponding guarantee but not the whole
+system.
+
+---
+
+## 7. Deployment Targets
+
+| Environment      | Purpose                       | URL / Access                       |
+|------------------|-------------------------------|------------------------------------|
+| Local Hardhat    | Development + tests + demo    | `http://127.0.0.1:8545`            |
+| Sepolia          | Public-chain proof of deploy  | `sepolia.etherscan.io`             |
+| IPFS (mocked URI)| Manifest documents            | (optional — placeholder URIs work) |
+
+For the demo: develop and run live on local Hardhat (instant blocks, reliable).
+Deploy once to Sepolia and put the Etherscan link in the slides as proof the
+contracts work on a real public network.
