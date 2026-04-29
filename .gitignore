@@ -23,6 +23,10 @@ out/
 # Circom build output
 circuits/build/
 
+# Oracle simulator output (regenerated at runtime, can be MBs of JSON)
+prototype/app/public/oracle-batches/*.json
+!prototype/app/public/oracle-batches/.gitkeep
+
 # IDE / OS
 .DS_Store
 Thumbs.db

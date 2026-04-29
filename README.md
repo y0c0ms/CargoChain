@@ -22,7 +22,15 @@ permissioned chain. We took the opposite stance.
 ```bash
 git clone https://github.com/y0c0ms/CargoChain.git
 cd CargoChain/prototype && npm install && cd app && npm install && cd ../..
+```
 
+**Windows (one-click):**
+```powershell
+.\demo\start-all.ps1   # opens 4 terminals; app ready in ~25 s on http://localhost:3000
+```
+
+**Manual / cross-platform:**
+```bash
 # Terminal 1
 cd prototype && npx hardhat node
 
@@ -35,12 +43,21 @@ cd prototype/app && npm run dev
 ```
 
 Full setup with troubleshooting in **[docs/SETUP.md](docs/SETUP.md)**.
+PowerShell scripts documented in **[demo/README.md](demo/README.md)**.
 
 ## Repository layout
 
 ```
 CargoChain/
 ├── README.md                  ← entry point (you are here)
+├── demo/                      ← PowerShell launchers (Windows)
+│   ├── README.md              ← how to run the .ps1 scripts
+│   ├── start-all.ps1          ← orchestrator — opens 4 terminals
+│   ├── start-node.ps1         ← T1: Hardhat node
+│   ├── deploy-seed.ps1        ← T2: deploy + seed
+│   ├── start-app.ps1          ← T3: Next.js
+│   ├── start-oracle.ps1       ← T4: IoT oracle
+│   └── stop-all.ps1           ← kill everything
 ├── docs/                      ← project documentation
 │   ├── SETUP.md               ← install, deploy, seed, run, test
 │   ├── PROJECT_PLAN.md        ← scope, tech choices, deliverables

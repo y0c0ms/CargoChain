@@ -3,6 +3,11 @@
 How to run CargoChain locally on Windows, macOS, or Linux. Should take 5 – 10
 minutes from a fresh clone to a fully running stack.
 
+> **Windows users:** for the fastest path, see [`demo/README.md`](../demo/README.md) —
+> a one-line PowerShell command (`.\demo\start-all.ps1`) opens 4 terminals
+> and starts the entire stack with timed delays. Skip to section 9 if you
+> only want to run the tests.
+
 ---
 
 ## 1. Prerequisites
@@ -117,19 +122,23 @@ Still in the second terminal:
 npx hardhat run scripts/seed.ts --network localhost
 ```
 
-This:
+This sets up five demo identities and one consignment:
 
-1. Registers DIDs for the deployer + carrier + shipper Hardhat accounts
-2. Approves the deployer as a `LicensedCarrier` issuer (audit fix H-1)
-3. Issues a `LicensedCarrier` Verifiable Credential to account #1 (carrier)
-4. Approves the deployer as an IoT oracle (audit fix H-2)
-5. Creates demo consignment #1 (signed by the shipper — no operator gating)
+| Hardhat # | Role     | Demo name      | Has LicensedCarrier VC? |
+|-----------|----------|----------------|-------------------------|
+| #0        | issuer   | IATA           | (issues VCs)            |
+| #1        | carrier  | TAP Air Cargo  | yes                     |
+| #2        | shipper  | Pfizer         | no (shippers don't need one) |
+| #3        | carrier  | DHL Aviation   | yes                     |
+| #4        | receiver | MSF Luanda     | yes (so it can take final custody) |
 
-You'll need the carrier address printed at the end for the Carrier dashboard:
+After seeding:
+- Demo consignment **#1** is created — Pfizer shipping HBL-2026-042 (Lisbon → Luanda)
+- All addresses are printed at the end of seed output for reference
 
-```
-Carrier address : 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
-```
+You won't need to copy any of those addresses into the UI — the **AccountPicker
+in the top-right of every dashboard** lets you pick which identity is signing
+on the fly (no env edits, no restarts, no Hardhat console).
 
 ---
 
@@ -153,9 +162,14 @@ home page:
 | `/simulation`  | Simulation  | Watch IoT batches anchor live + verify any reading on-chain    |
 | `/regulator`   | Regulator   | Full audit trail for any consignment                           |
 
-If MetaMask is installed and connected, the UI uses it. Otherwise it falls
-back to the dev signer (account #0). The badge on the Shipper dashboard says
-`dev · 0xf39F…2266` in fallback mode.
+**Switching identities.** The picker in the top-right of every page lets you
+pick which Hardhat account signs the next transaction. Click → choose
+"Pfizer" / "TAP Air Cargo" / "DHL Aviation" / "MSF Luanda" / "IATA" → done.
+The selection persists in `localStorage`, so you can refresh, navigate
+between dashboards, or restart your browser without losing it.
+
+If MetaMask is installed and connected, the UI uses MetaMask instead of the
+picker. The picker is purely a no-wallet-extension demo affordance.
 
 ---
 
@@ -179,6 +193,30 @@ Open the Simulation dashboard, click **Start watching**, and within ~10 s
 you'll see the first batch appear. Click **Load Readings** to see the 8 raw
 readings, then **Verify** on any reading — the contract will recompute the
 Merkle path and answer ✅ or ❌.
+
+---
+
+## 8b. Recommended end-to-end demo flow
+
+Here's the cleanest "all five dashboards in 2 minutes" demo using the picker.
+Consignment **#1** has already been created by `seed.ts` (Pfizer is the
+current custodian).
+
+| # | Pick (top-right)  | Page         | What you do                                                              |
+|---|-------------------|--------------|--------------------------------------------------------------------------|
+| 1 | **Pfizer**        | `/carrier`   | Token=`1`, Recipient=TAP's address, Location=`PTLIS` → Transfer Custody |
+| 2 | (any)             | `/customs`   | Subject=TAP's address, Schema=`LicensedCarrier` → **VALID ✓**           |
+| 3 | (any)             | `/simulation`| Token=`1`, Start watching, Load Readings → click **Verify** on a row    |
+| 4 | **TAP Air Cargo** | `/carrier`   | Token=`1`, Recipient=DHL's address, Location=`LISBOA-FRA` → Transfer    |
+| 5 | **DHL Aviation**  | `/carrier`   | Token=`1`, Recipient=MSF's address, Location=`AOLAD` → Transfer         |
+| 6 | **MSF Luanda**    | `/carrier`   | Token=`1` → **Mark Delivered**                                          |
+| 7 | (any)             | `/regulator` | Token=`1`, Run Audit → 3 hops, Status: Delivered, IoT batches anchored  |
+
+You can grab each address from the AccountPicker dropdown — it's right there
+in the entry for that role.
+
+For a one-take recording, start the IoT oracle (step 8) before you begin so
+batches are accumulating while you walk through hops 1 → 6.
 
 ---
 
@@ -211,7 +249,8 @@ Broken down by file:
 | Symptom                                            | Cause / Fix                                                |
 |----------------------------------------------------|------------------------------------------------------------|
 | `cannot connect to network localhost`              | The Hardhat node terminal isn't running. Start step 4.     |
-| Carrier dashboard shows `RecipientNotLicensed`     | The recipient address has a DID but no VC. Use the address printed by `seed.ts` (account #1). |
+| Carrier dashboard shows `NotCurrentCustodian`      | You're signing as the wrong identity. Pick the *current* custodian in the top-right picker (Run Regulator audit to see who holds it). |
+| Carrier dashboard shows `RecipientNotLicensed`     | The recipient address has a DID but no VC. Use one of the seeded carrier addresses (TAP, DHL, MSF). |
 | Carrier dashboard shows `RecipientNotActive`       | The recipient has no DID. Run `seed.ts` first.             |
 | Simulation page shows "Batch JSON not found"       | The oracle simulator hasn't run yet. Start it (step 8).    |
 | Port 3000 already in use                           | `lsof -i :3000` (or `netstat -ano | findstr 3000` on Windows) → kill or `PORT=3001 npm run dev` |
