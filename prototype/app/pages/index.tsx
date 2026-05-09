@@ -3,8 +3,7 @@ import Link from "next/link";
 export default function Home() {
   const dashboards = [
     { href: "/shipper",    name: "Shipper",    desc: "Create a consignment (manifest hash anchored on-chain)" },
-    { href: "/carrier",    name: "Carrier",    desc: "Take custody, hand off to next carrier" },
-    { href: "/customs",    name: "Customs",    desc: "Verify a Verifiable Credential by schema" },
+    { href: "/carrier",    name: "Carrier",    desc: "Take custody, hand off to next carrier, or mark delivered" },
     { href: "/simulation", name: "Simulation", desc: "Live IoT batches + on-chain Merkle proof verification" },
     { href: "/regulator",  name: "Regulator",  desc: "Full audit trail for any consignment" },
   ];
@@ -14,8 +13,8 @@ export default function Home() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl font-bold text-teal-800 mb-2">CargoChain</h1>
         <p className="text-slate-600 mb-2">
-          Public-chain logistics platform: SSI-authenticated stakeholders, custody
-          tracking, and IoT data integrity verifiable by anyone.
+          Blockchain logistics platform: immutable custody tracking and
+          IoT data integrity verifiable by anyone on-chain.
         </p>
         <p className="text-slate-500 text-sm mb-8">
           Pick a role to open its dashboard.

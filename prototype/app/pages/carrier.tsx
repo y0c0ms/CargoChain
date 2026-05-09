@@ -60,10 +60,10 @@ export default function Carrier() {
         <a href="/" className="text-teal-700 text-sm hover:underline">&larr; Home</a>
         <h1 className="text-3xl font-bold text-teal-700 mt-2 mb-4">Carrier Dashboard</h1>
         <p className="text-slate-600 mb-6">
-          Transfer custody to the next carrier (must hold a <code>LicensedCarrier</code> VC),
-          or mark the consignment delivered when it reaches its destination.
-          Both actions must be signed by the <strong>current custodian</strong> —
-          use the picker in the top-right to switch identities.
+          Transfer custody to the next carrier, or mark the consignment delivered
+          when it reaches its destination. Both actions must be signed by the{" "}
+          <strong>current custodian</strong> — use the picker in the top-right to
+          switch identities.
         </p>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
