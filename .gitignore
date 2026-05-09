@@ -27,6 +27,9 @@ circuits/build/
 prototype/app/public/oracle-batches/*.json
 !prototype/app/public/oracle-batches/.gitkeep
 
+# Package manager lock files (project uses npm)
+bun.lock
+
 # IDE / OS
 .DS_Store
 Thumbs.db

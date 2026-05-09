@@ -1,4 +1,6 @@
 import { ethers } from "hardhat";
+import * as fs from "fs";
+import * as path from "path";
 
 /**
  * Deploys the CargoChain stack (2 contracts) to the selected network.
@@ -9,6 +11,9 @@ import { ethers } from "hardhat";
  *
  * Run with:
  *   npx hardhat run scripts/deploy.ts --network localhost
+ *
+ * After deploy, prototype/app/.env.local is written automatically — no manual
+ * copy-paste step needed.
  */
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -16,15 +21,25 @@ async function main() {
 
   const ConsignmentRegistry = await ethers.deployContract("ConsignmentRegistry");
   await ConsignmentRegistry.waitForDeployment();
-  console.log("ConsignmentRegistry:", await ConsignmentRegistry.getAddress());
+  const regAddr = await ConsignmentRegistry.getAddress();
+  console.log("ConsignmentRegistry:", regAddr);
 
   const MerkleIoT = await ethers.deployContract("MerkleIoT");
   await MerkleIoT.waitForDeployment();
-  console.log("MerkleIoT          :", await MerkleIoT.getAddress());
+  const iotAddr = await MerkleIoT.getAddress();
+  console.log("MerkleIoT          :", iotAddr);
 
-  console.log("\nCopy these addresses into prototype/app/.env.local:");
-  console.log(`NEXT_PUBLIC_REGISTRY=${await ConsignmentRegistry.getAddress()}`);
-  console.log(`NEXT_PUBLIC_MERKLE=${await MerkleIoT.getAddress()}`);
+  // Auto-write app/.env.local so the Next.js app picks up addresses immediately
+  const envPath = path.resolve(__dirname, "../app/.env.local");
+  const envContent = [
+    "NEXT_PUBLIC_RPC=http://127.0.0.1:8545",
+    "NEXT_PUBLIC_CHAIN_ID=31337",
+    `NEXT_PUBLIC_REGISTRY=${regAddr}`,
+    `NEXT_PUBLIC_MERKLE=${iotAddr}`,
+  ].join("\n") + "\n";
+
+  fs.writeFileSync(envPath, envContent, "utf8");
+  console.log(`\n✅  app/.env.local written automatically — no manual copy needed.`);
 }
 
 main().catch((e) => {
