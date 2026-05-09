@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "./CarrierCredential.sol";
-import "./DIDRegistry.sol";
-
 /// @title ConsignmentRegistry — single contract for consignment identity + custody
 /// @notice Registers each container/consignment as a unique on-chain entity and
 ///         tracks every custody handover. Stores only **state and hashes**;
@@ -13,22 +10,16 @@ import "./DIDRegistry.sol";
 /// @dev Why this isn't an ERC-721:
 ///      ERC-721 has `transferFrom`/`approve` semantics designed for token
 ///      ownership. Physical custody handover is different — every transfer
-///      requires per-recipient KYC checks (active DID + LicensedCarrier VC)
-///      that don't fit the standard. Embedding custody logic in a token
-///      wrapper added complexity with no benefit, so we drop the token
-///      standard and use a plain registry.
+///      needs business-rule checks that don't fit the standard interface.
+///      A plain registry is simpler and cheaper.
 ///
 ///      Why custody is in the same contract as the registry:
 ///      Consignment identity and custody are the same domain concept — every
 ///      consignment has exactly one current custodian, and a transfer always
-///      mutates both the registry entry and the history log. Splitting them
-///      across two contracts forced the front-end to make two RPC calls per
-///      handover and meant the auth check on `transferCustody` had to read
-///      from a foreign contract. One contract is simpler and cheaper.
+///      mutates both the registry entry and the history log.
 ///
 ///      Concept-map nodes: Smart Contract · Custody · Immutability ·
-///      Identity + Smart Contracts · Events (audit trail) · Hash · Data Integrity ·
-///      State Machine.
+///      Events (audit trail) · Hash · Data Integrity · State Machine.
 contract ConsignmentRegistry {
     // ─────────────────────────────────────────────────────────────────────
     // Types
@@ -56,9 +47,6 @@ contract ConsignmentRegistry {
     // ─────────────────────────────────────────────────────────────────────
     // Storage
     // ─────────────────────────────────────────────────────────────────────
-
-    CarrierCredential public immutable creds;
-    DIDRegistry       public immutable dids;
 
     uint256 public nextId = 1;
     mapping(uint256 => Consignment) public consignments;
@@ -88,35 +76,21 @@ contract ConsignmentRegistry {
     // ─────────────────────────────────────────────────────────────────────
 
     error UnknownConsignment();
-    error ShipperNotActive();
     error NotCurrentCustodian();
-    error RecipientNotLicensed();
-    error RecipientNotActive();
     error AlreadyDelivered();
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Constructor
-    // ─────────────────────────────────────────────────────────────────────
-
-    constructor(CarrierCredential _creds, DIDRegistry _dids) {
-        creds = _creds;
-        dids  = _dids;
-    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Mutating functions
     // ─────────────────────────────────────────────────────────────────────
 
-    /// @notice Create a new consignment. Anyone with an active DID can ship —
-    ///         no operator gating, no allowlist. The consignment's first
-    ///         custodian is the shipper themselves until they hand it off.
+    /// @notice Create a new consignment. Anyone can ship — no allowlist.
+    ///         The consignment's first custodian is the shipper themselves.
     /// @param manifestHash  keccak256 of the JSON document at `manifestURI`.
     /// @param manifestURI   IPFS or HTTPS URI of the off-chain manifest JSON.
     function createConsignment(
         bytes32 manifestHash,
         string  calldata manifestURI
     ) external returns (uint256 id) {
-        if (!dids.isActive(msg.sender)) revert ShipperNotActive();
         id = nextId++;
         consignments[id] = Consignment({
             shipper:           msg.sender,
@@ -129,9 +103,15 @@ contract ConsignmentRegistry {
         emit ConsignmentCreated(id, msg.sender, manifestHash, manifestURI);
     }
 
-    /// @notice Transfer custody to a new party. Recipient must:
-    ///         (a) have an active DID;
-    ///         (b) hold a valid LicensedCarrier VC.
+    /// @notice Transfer custody to a new party.
+    ///         Only the current custodian can call this.
+    ///
+    /// NOTE: In a production deployment, `to` would be validated against a
+    ///       DID Registry and required to hold a LicensedCarrier Verifiable
+    ///       Credential issued by a trusted authority (e.g. IATA).
+    ///       Omitted from this prototype to keep the scope focused on core
+    ///       consignment tracking logic.
+    ///
     /// @dev Status auto-advances Created -> InTransit on the first transfer.
     function transferCustody(
         uint256 id,
@@ -143,9 +123,6 @@ contract ConsignmentRegistry {
         if (c.shipper == address(0)) revert UnknownConsignment();
         if (c.currentCustodian != msg.sender) revert NotCurrentCustodian();
         if (c.status == Status.Delivered) revert AlreadyDelivered();
-        if (!dids.isActive(to)) revert RecipientNotActive();
-        if (!creds.subjectHasActiveVC(to, CarrierCredential.Schema.LicensedCarrier))
-            revert RecipientNotLicensed();
 
         address from = c.currentCustodian;
         c.currentCustodian = to;
@@ -166,8 +143,7 @@ contract ConsignmentRegistry {
     }
 
     /// @notice Mark the consignment as delivered. Only the current custodian
-    ///         can call this — they're the receiver attesting that the cargo
-    ///         arrived.
+    ///         can call this — they're the receiver attesting the cargo arrived.
     function markDelivered(uint256 id) external {
         Consignment storage c = consignments[id];
         if (c.shipper == address(0)) revert UnknownConsignment();
@@ -189,9 +165,7 @@ contract ConsignmentRegistry {
         return _history[id].length;
     }
 
-    /// @notice Convenience accessor — returns the address holding custody now.
-    ///         Mirrors the ERC-721 `ownerOf` shape so dashboards reading "who
-    ///         has it" need only one call.
+    /// @notice Returns the address holding custody now.
     function custodianOf(uint256 id) external view returns (address) {
         return consignments[id].currentCustodian;
     }
