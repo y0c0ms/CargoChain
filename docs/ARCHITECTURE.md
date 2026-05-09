@@ -6,9 +6,9 @@ Architecture (Abed et al. 2023)** presented in T2.
 The architecture was simplified after the case-study evidence in
 [CASE_STUDIES.md](CASE_STUDIES.md) showed that every major permissioned-chain
 logistics platform (TradeLens, we.trade, Marco Polo, Contour, B3i) failed
-between 2022 and 2023. Payment, ZK escrow, and the ERC-721 token wrapper were
-also dropped — they added complexity without addressing the actual course
-material.
+between 2022 and 2023. Payment, ZK escrow, the ERC-721 token wrapper, and the
+DID/VC contracts were also dropped — they added complexity without addressing
+the actual course material or professor feedback requirements.
 
 ---
 
@@ -18,48 +18,41 @@ material.
 ┌──────────────────────────────────────────────────────────────────────┐
 │  APPLICATION LAYER  (Next.js 14 · React · ethers.js · Tailwind)      │
 │                                                                      │
-│   ┌────────┐  ┌────────┐  ┌────────┐  ┌──────────┐  ┌─────────┐      │
-│   │Shipper │  │Carrier │  │Customs │  │Simulation│  │Regulator│      │
-│   │  UI    │  │  UI    │  │  UI    │  │   UI     │  │   UI    │      │
-│   └───┬────┘  └───┬────┘  └───┬────┘  └────┬─────┘  └────┬────┘      │
-│       └───────────┴───────────┴────────────┴─────────────┘           │
+│   ┌────────┐  ┌────────┐  ┌──────────┐  ┌─────────┐                  │
+│   │Shipper │  │Carrier │  │Simulation│  │Regulator│                  │
+│   │  UI    │  │  UI    │  │   UI     │  │   UI    │                  │
+│   └───┬────┘  └───┬────┘  └────┬─────┘  └────┬────┘                  │
+│       └───────────┴────────────┴─────────────┘                       │
 │                              │                                       │
 ├──────────────────────────────┼───────────────────────────────────────┤
 │  MODELLING LAYER             │                                       │
-│     Flows: Register DID → Issue VC → Create Consignment              │
-│            → TransferCustody → AnchorIoTBatch → VerifyReading        │
-│            → MarkDelivered                                           │
+│     Flows: Create Consignment → TransferCustody → AnchorIoTBatch     │
+│            → VerifyReading → MarkDelivered                           │
 │                                                                      │
 │     State machine: Created → InTransit → Delivered (Disputed)        │
 ├──────────────────────────────────────────────────────────────────────┤
-│  CONTRACT LAYER  (4 Solidity contracts)                              │
+│  CONTRACT LAYER  (2 Solidity contracts)                              │
 │                                                                      │
-│  ┌────────────┐ ┌──────────────┐ ┌─────────────────────┐             │
-│  │DIDRegistry │ │CarrierCreden-│ │ConsignmentRegistry  │             │
-│  │            │ │tial (VC anch)│ │ (state + custody)   │             │
-│  └─────┬──────┘ └──────┬───────┘ └──────────┬──────────┘             │
-│        │               │                    │                        │
-│        └───────┬───────┴────────────────────┘                        │
-│                ▼                                                     │
-│      ┌──────────────────────────┐                                    │
-│      │ MerkleIoT                │                                    │
-│      │ (anchor + verifyReading) │                                    │
-│      └──────────────┬───────────┘                                    │
-├──────────────────────┼───────────────────────────────────────────────┤
-│  DATA LAYER          │                                               │
-│                      ▼                                               │
+│  ┌─────────────────────────────┐   ┌──────────────────────────────┐   │
+│  │ ConsignmentRegistry         │   │ MerkleIoT                    │   │
+│  │ (state + custody)           │   │ (anchor + verifyReading)     │   │
+│  └──────────────┬──────────────┘   └──────────────┬───────────────┘   │
+│                 └─────────────────┬───────────────┘                   │
+│                                   ▼                                  │
+├───────────────────────────────────────────────────────────────────── │
+│  DATA LAYER                                                          │
 │   ┌─────────────────────────────────────────────────────┐            │
 │   │         BLOCKS / TRANSACTIONS / STATE               │            │
 │   │  (keccak256 tx merkle root per block)               │            │
 │   └─────────────────────────────────────────────────────┘            │
 ├──────────────────────────────────────────────────────────────────────┤
-│  NETWORK LAYER  — public EVM only                                    │
+│  NETWORK LAYER                                                       │
 │                                                                      │
-│   ┌─────────────────────────┐  ┌────────────────────────────────┐    │
-│   │ Local Hardhat (dev)     │  │ Ethereum Sepolia (public demo) │    │
-│   │ instant blocks          │  │ public PoS, ~12 s blocks       │    │
-│   │ deterministic accounts  │  │ free testnet ETH via faucet    │    │
-│   └─────────────────────────┘  └────────────────────────────────┘    │
+│   ┌─────────────────────────┐                                         │
+│   │ Local Hardhat (dev)     │                                         │
+│   │ instant blocks          │                                         │
+│   │ deterministic accounts  │                                         │
+│   └─────────────────────────┘                                         │
 └──────────────────────────────────────────────────────────────────────┘
 
     OFF-CHAIN SIDECARS (not in reference architecture layering)
@@ -73,29 +66,7 @@ material.
 
 ## 2. Smart-Contract Details
 
-### 2.1 `DIDRegistry.sol`
-
-- Maps `address` → `DIDEntry { documentHash, documentURI, createdAt, updatedAt, revoked }`
-- Anyone can self-register their DID — no operator gating
-- Functions: `register(hash, uri)`, `updateDocument(...)`, `revoke()`, `resolve(addr)`, `isActive(addr)`
-- Events: `DIDRegistered`, `DIDUpdated`, `DIDRevoked`
-- **Security note:** the off-chain DID resolver (`app/lib/did-resolver.ts`)
-  must re-hash the fetched document and compare to `documentHash` — the H-4
-  fix in `SECURITY.md`.
-- Concept nodes: DID · DID Document · Verifiable Data Registry · Decentralization
-
-### 2.2 `CarrierCredential.sol`
-
-- Anchors the **hash of a Verifiable Credential** on-chain (W3C VC v2)
-- Stores: issuer DID, subject DID, schema, vcHash, notBefore, expiry, revoked
-- Schemas: `LicensedCarrier`, `CustomsOfficer`, `PharmaGrade`, `PortOperator`, `InspectorAuthority`
-- Functions: `setApprovedIssuer(schema, addr, bool)` (owner), `issueVC(...)`, `revokeVC(...)`,
-  `subjectHasActiveVC(subject, schema)`, `isValid(vcHash)`
-- **H-1 protection:** issuer allowlist per schema. Without this, anyone with
-  a DID could mint themselves any VC.
-- Concept nodes: Verifiable Credentials · VC Lifecycle · Issuer/Holder/Verifier · On-ledger anchors
-
-### 2.3 `ConsignmentRegistry.sol`
+### 2.1 `ConsignmentRegistry.sol`
 
 The merger of the previous `ConsignmentNFT` + `CustodyLedger`. **Not** an
 ERC-721 — see the contract header for the rationale.
@@ -103,14 +74,16 @@ ERC-721 — see the contract header for the rationale.
 - Stores: `Consignment { shipper, currentCustodian, status, manifestHash, manifestURI, createdAt }`
 - Stores: `Handover[]` log per consignment id
 - Status state machine: `Created → InTransit → Delivered`
-- Anyone with an active DID can `createConsignment(manifestHash, uri)` — no operator gating
-- `transferCustody(...)` requires recipient to (a) have an active DID and (b) hold a `LicensedCarrier` VC
+- Anyone can `createConsignment(manifestHash, uri)` — no operator gating
+- `transferCustody(...)` requires `msg.sender == currentCustodian`. In
+  production, a DID+VC check would be added here (see NOTE in contract and
+  SECURITY.md for the full threat model).
 - `markDelivered(...)` callable only by the current custodian
 - Read helpers: `custodianOf(id)`, `historyOf(id)`, `hopCount(id)`
 - Concept nodes: Smart Contract · Custody · Immutability · Identity + SC ·
   Events (audit trail) · Hash · Data Integrity · State Machine
 
-### 2.4 `MerkleIoT.sol`
+### 2.2 `MerkleIoT.sol`
 
 - Accepts a Merkle root for a batch of off-chain IoT readings
 - Stores: `Batch { tokenId, merkleRoot, readingCount, firstTs, lastTs, submitter }`
@@ -123,32 +96,18 @@ ERC-721 — see the contract header for the rationale.
 
 ---
 
-## 3. SSI Data Flow
+## 3. Custody Transfer Flow
 
 ```
- Issuer DID (e.g. Licensing Authority)
-     │  signs VC → hashes VC → calls CarrierCredential.issueVC(...)
-     ▼
-Verifiable Data Registry (public chain)   —   anyone can read
-     │
-     │  {issuer DID, subject DID, schema, vcHash, expiry}
-     ▼
- Holder DID (Carrier)  ← stores full VC off-chain in their wallet
-     │
-     │  When taking custody: signs handover transaction.
-     │  The contract's transferCustody() checks the recipient's VC.
-     ▼
- Verifier (ConsignmentRegistry.transferCustody)
-     │  1) dids.isActive(to)
-     │  2) creds.subjectHasActiveVC(to, LicensedCarrier)
-     │  → revert if either fails
-     ▼
- Custody transfer accepted, event emitted, history appended
-```
+Current custodian calls transferCustody(id, to, location, handshakeHash)
+    → checks msg.sender == currentCustodian
+    → updates currentCustodian = to
+    → appends Handover to _history[id]
+    → emits CustodyTransferred event
 
-**Selective disclosure:** when a regulator queries `subjectHasActiveVC`, they
-get the *boolean* result without ever reading the VC itself (which lives in
-the carrier's wallet only).
+NOTE: A production deployment would also validate `to` against a DID registry
+and require a LicensedCarrier Verifiable Credential. Omitted from this prototype.
+```
 
 ---
 
@@ -191,17 +150,10 @@ the carrier's wallet only).
 
 ## 5. Consensus Choice Justification
 
-| Criterion              | Sepolia (PoS)              | Local Hardhat            |
-|------------------------|----------------------------|--------------------------|
-| Finality               | ~12 s blocks, ~13 min final | Instant (deterministic) |
-| Throughput             | ~15 TPS                    | n/a (single-node)        |
-| Permissioning          | Permissionless             | Open                     |
-| Cost                   | Free (testnet ETH)         | Free                     |
-| Course-material match  | T3 PoS · Casper FFG · Validators | n/a                |
-
-Sepolia is the canonical Ethereum testnet — every survivor case study that
-operates on public Ethereum (CargoX, OriginTrail's Ethereum integration) is
-on this same chain at higher tier.
+All demo and testing runs on local Hardhat (instant finality, deterministic
+accounts, no cost). The architecture is EVM-compatible — deployment to any
+public EVM chain (Ethereum mainnet, Sepolia testnet, Polygon) requires only
+changing the RPC endpoint in `hardhat.config.ts`.
 
 We **deliberately removed** Hyperledger Besu / IBFT 2.0 from previous versions.
 The case studies (TradeLens, we.trade, Marco Polo, Contour, B3i) demonstrate
@@ -212,13 +164,13 @@ about, not endorse. See [`CASE_STUDIES.md`](CASE_STUDIES.md).
 
 ## 6. Trust Assumptions
 
-1. **Public chain validators** — at least 2/3 of stake honest (standard PoS assumption)
-2. **Approved issuers (per VC schema)** — the contract owner curates the allowlist; 
-   in production this would be a multisig of regulators
-3. **Approved IoT oracles** — same allowlist mechanism, same governance question
-4. **DID controllers** — each actor safeguards their private key (out-of-band
+1. **Public chain validators** — at least 2/3 of stake honest (standard PoS
+   assumption; relevant when deploying to a live network)
+2. **Approved IoT oracles** — owner-managed allowlist; in production this
+   would be a multisig of trusted sensor gateways
+3. **Key management** — each actor safeguards their private key (out-of-band
    key management; production would use hardware wallets)
-5. **Off-chain manifest gateway** — *not* trusted; the on-chain `manifestHash`
+4. **Off-chain manifest gateway** — *not* trusted; the on-chain `manifestHash`
    is the source of truth, the gateway just serves the document for hashing
 
 Breaking any of these breaks the corresponding guarantee but not the whole
@@ -231,9 +183,9 @@ system.
 | Environment      | Purpose                       | URL / Access                       |
 |------------------|-------------------------------|------------------------------------|
 | Local Hardhat    | Development + tests + demo    | `http://127.0.0.1:8545`            |
-| Sepolia          | Public-chain proof of deploy  | `sepolia.etherscan.io`             |
 | IPFS (mocked URI)| Manifest documents            | (optional — placeholder URIs work) |
 
 For the demo: develop and run live on local Hardhat (instant blocks, reliable).
-Deploy once to Sepolia and put the Etherscan link in the slides as proof the
-contracts work on a real public network.
+The contracts are EVM-compatible and can be deployed to any public chain
+(Sepolia, mainnet, Polygon) by updating the RPC configuration — no code changes
+needed.

@@ -14,32 +14,32 @@ is listed here with one of four coverage statuses:
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| DLT (Distributed Ledger Tech) | 🟢     | Ethereum Sepolia (public PoS) + local Hardhat          |
-| Blockchain                    | 🟢     | Both networks running                                  |
+| DLT (Distributed Ledger Tech) | 🟢     | Local Hardhat (EVM-compatible for any public PoS)      |
+| Blockchain                    | 🟢     | Local Hardhat node running                             |
 | Evolution 1.0 → 4.0           | 🟠     | State-of-Art slide (positioning CargoChain as 3.0/4.0) |
 | Purpose (coord/proven/consensus)| 🟠   | Problem framing slide                                  |
-| Block                         | 🟢     | Every tx produces blocks on both networks              |
-| Transaction                   | 🟢     | Custody, create-consignment, IoT-anchor, VC issuance   |
-| Consensus                     | 🟢     | PoS (Ethereum / Polygon)                               |
-| P2P Network                   | 🟢     | Public PoS networks                                    |
+| Block                         | 🟢     | Every tx produces blocks on Hardhat                    |
+| Transaction                   | 🟢     | Custody, create-consignment, IoT-anchor                |
+| Consensus                     | 🟢     | PoS (Ethereum / public EVM — local Hardhat for dev)    |
+| P2P Network                   | 🟢     | Public PoS networks (discussed); Hardhat for demo      |
 | Immutability                  | 🟢     | Inherent; demonstrated in regulator dashboard          |
 | Decentralization              | 🟢     | Public chain (no operator)                             |
-| Hash Function                 | 🟢     | keccak256 throughout (manifest hash, DID document hash, Merkle nodes) |
+| Hash Function                 | 🟢     | keccak256 throughout (manifest hash, Merkle nodes)     |
 | Merkle Tree                   | 🟢     | `MerkleIoT.sol` + off-chain builder + `verifyReading`  |
 | Cryptography                  | 🟢     | Hashing, signing all exercised                         |
 | Public-key Cryptography       | 🟢     | Ethereum secp256k1 (wallets) + Ed25519 (oracles)       |
 | Zero-Knowledge Proofs         | 🟠     | Discussed as future-work extension; out of scope after professor feedback |
 | Network Types                 | 🟠     | Discussed; we run public only                          |
-| Public Blockchain             | 🟢     | Ethereum Sepolia                                       |
+| Public Blockchain             | 🟢     | EVM-compatible architecture; local Hardhat for demo    |
 | Private Blockchain            | 🟠     | Discussed (TradeLens / we.trade case studies)          |
 | Architecture (layers)         | 🟠     | ARCHITECTURE.md + slides                               |
-| Smart Contracts               | 🟢     | 4 Solidity contracts                                   |
+| Smart Contracts               | 🟢     | 2 Solidity contracts                                   |
 | Wallet                        | 🟢     | MetaMask + dev signer fallback                         |
 | NFT                           | 🟠     | Discussed; intentionally not used (see ConsignmentRegistry header) |
 | Non-blockchain DLTs           | 🟠     | State-of-Art slide (Hedera, DAGs contrast)             |
 | Platforms comparison          | 🟠     | Tech-stack slide                                       |
 | Use Cases                     | 🟢     | This project IS a use case (transport)                 |
-| Digital Identity              | 🟢     | DID-based identity for each actor                      |
+| Digital Identity              | 🟠     | DID/VC discussed in report as production extension; not implemented in prototype |
 
 ---
 
@@ -47,18 +47,18 @@ is listed here with one of four coverage statuses:
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| Consensus Mechanisms          | 🟢     | PoS in production (Sepolia)                            |
+| Consensus Mechanisms          | 🟢     | PoS in production (public EVM)                         |
 | PoW (Proof of Work)           | 🟠     | Comparison slide                                       |
-| PoS (Proof of Stake)          | 🟢     | Sepolia uses Casper FFG / LMD-GHOST PoS                |
+| PoS (Proof of Stake)          | 🟢     | Casper FFG / LMD-GHOST discussed; Hardhat for dev      |
 | DPoS                          | 🟠     | Comparison slide (Solana example)                      |
 | PoH (Proof of History)        | 🟠     | Comparison slide                                       |
 | BFT (Byzantine Fault Tolerance)| 🟠    | Discussed; abandoned in favour of public PoS (case studies) |
 | IBFT 2.0                      | 🟠     | **Discussed as failure mode** (TradeLens case study)   |
 | Avalanche Consensus           | 🟠     | Comparison slide                                       |
-| Finality (probab/instant/determ) | 🟢 | Demonstrated: Hardhat instant; Sepolia ~13 min full finality |
-| Throughput                    | 🟢     | Benchmarked: Sepolia ~15 TPS                           |
+| Finality (probab/instant/determ) | 🟢 | Demonstrated: Hardhat instant; public chains ~13 min full finality |
+| Throughput                    | 🟠     | Discussed: Ethereum ~15 TPS; local demo not bottlenecked |
 | Validator Economics           | 🟢     | PoS staking + slashing discussed in T3 slide           |
-| EIP-1559 Fee Market           | 🟢     | Both target chains use it                              |
+| EIP-1559 Fee Market           | 🟢     | Target chains use it (relevant for live deploy)        |
 | Mempool                       | 🟢     | Standard PoS mempool                                   |
 | Scaling Solutions (hub)       | 🟠     | Dedicated analysis slide                               |
 | Sharding                      | 🟠     | Discussed as future work                               |
@@ -78,13 +78,13 @@ is listed here with one of four coverage statuses:
 | Smart Contract Definition     | 🟢     | Every file in `contracts/`                             |
 | Legal vs Smart Contract       | 🟠     | Report section on MLETR Bill of Lading                 |
 | SC Categories                 | 🟠     | Tech-choice rationale slide                            |
-| Solidity                      | 🟢     | All 4 contracts in Solidity 0.8.26                     |
+| Solidity                      | 🟢     | All 2 contracts in Solidity 0.8.26                     |
 | Daml                          | 🟠     | Comparison slide                                       |
 | Chaincode (Fabric)            | 🟠     | TradeLens / we.trade case studies                      |
 | CorDapp                       | 🟠     | Marco Polo / Contour case studies                      |
 | Token Standards               | 🟠     | Discussed (ERC-721 critique); not used                 |
 | State Machines                | 🟢     | ConsignmentRegistry: Created → InTransit → Delivered   |
-| Custom Errors                 | 🟢     | All 4 contracts use them; decoded by `lib/errors.ts`   |
+| Custom Errors                 | 🟢     | Both contracts use them; decoded by `lib/errors.ts`    |
 | Challenges & limitations      | 🟠     | Challenges slide                                       |
 | Future Trends                 | 🟠     | Final "future work" slide                              |
 | Hyperledger Fabric            | 🟠     | TradeLens case study (failure mode)                    |
@@ -100,26 +100,26 @@ is listed here with one of four coverage statuses:
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| Self-Sovereign Identity (SSI) | 🟢     | Core of stakeholder layer                              |
-| How SSI works (4 steps)       | 🟢     | Demo walks exactly these 4 steps                       |
+| Self-Sovereign Identity (SSI) | 🟠     | Discussed in report and slides; not implemented in prototype |
+| How SSI works (4 steps)       | 🟠     | Explained in slides as production extension            |
 | SSI Benefits                  | 🟠     | Discussion slide                                       |
 | SSI Challenges                | 🟠     | Challenges slide                                       |
-| DID                           | 🟢     | Address-anchored DID implementation                    |
-| DID Document                  | 🟢     | JSON-LD stored off-chain; hash anchored on-chain       |
-| DID Architecture              | 🟢     | Subject / Controller / Registry all modelled           |
-| Verification Methods          | 🟢     | Authentication key per DID                             |
-| DID Services                  | 🟡     | Static `serviceEndpoint` for each actor                |
-| Verifiable Credentials        | 🟢     | 5 schemas (LicensedCarrier, CustomsOfficer, PharmaGrade, PortOperator, InspectorAuthority) |
-| VC Lifecycle                  | 🟢     | Issue → Hold → Present → Verify all in demo            |
-| On-ledger vs Off-ledger       | 🟢     | VCs off-ledger in wallet; hashes + schemas on-chain    |
-| Identity + Smart Contracts    | 🟢     | `ConsignmentRegistry.transferCustody` checks VC before handover |
-| Hyperledger Identity Stack    | 🟠     | Inspired; simulated in our code                        |
+| DID                           | 🟠     | Address-anchored DID concept discussed; not implemented in prototype |
+| DID Document                  | 🟠     | Discussed in report; no on-chain DID contract in prototype |
+| DID Architecture              | 🟠     | Subject / Controller / Registry modelled in report     |
+| Verification Methods          | 🟠     | Authentication key per DID — discussed, not implemented |
+| DID Services                  | 🟠     | Discussed in report                                    |
+| Verifiable Credentials        | ⚪     | Discussed in report as production extension; not implemented in prototype |
+| VC Lifecycle                  | ⚪     | Discussed in report as production extension            |
+| On-ledger vs Off-ledger       | 🟠     | Analysed in report (VCs would be off-ledger; hashes on-chain) |
+| Identity + Smart Contracts    | 🟠     | Discussed: `transferCustody` would check VC in production (see SECURITY.md NOTE) |
+| Hyperledger Identity Stack    | 🟠     | Inspired; discussed in report                          |
 | Sovrin                        | 🟠     | State-of-Art slide                                     |
 | EBSI                          | 🟠     | State-of-Art + EU pilot relevance                      |
 | Privado ID                    | 🟠     | State-of-Art; privacy-first positioning                |
 | Identity Future Trends        | 🟠     | Future work slide                                      |
 | Identity Challenges           | 🟠     | Challenges slide                                       |
-| Selective Disclosure          | 🟢     | `subjectHasActiveVC` returns boolean — VC body not exposed |
+| Selective Disclosure          | 🟠     | Discussed: `subjectHasActiveVC` boolean pattern explained in report |
 
 ---
 
@@ -127,7 +127,7 @@ is listed here with one of four coverage statuses:
 
 | Node                          | Status | Where exercised                                        |
 |-------------------------------|--------|--------------------------------------------------------|
-| Hash anchoring                | 🟢     | manifestHash, vcHash, documentHash all on-chain        |
+| Hash anchoring                | 🟢     | manifestHash on-chain; Merkle IoT batches              |
 | Off-chain data + on-chain proof | 🟢   | Manifest JSON off-chain; Merkle IoT batches            |
 | Merkle proof verification     | 🟢     | `MerkleIoT.verifyReading` — anyone can prove on-chain  |
 | Daml Templates & Choices      | 🟠     | Contrasted with Solidity in a slide                    |
@@ -146,17 +146,16 @@ is listed here with one of four coverage statuses:
 
 The audit work exercises several T1-T4 concepts in their *adversarial*
 direction (Cryptography → integrity verification, Smart Contract → custom
-errors + role gates, Verifiable Credentials → trusted-issuer model).
+errors + role gates).
 
 | Audit finding                      | Status | Concept exercised                                |
 |------------------------------------|--------|--------------------------------------------------|
-| H-1 Trusted issuer registry        | 🟢     | VC Lifecycle · Issuer authority · SSI trust      |
+| H-1 Trusted issuer registry        | 🟠     | Documented threat; VC contracts not in prototype. Production mitigation described in SECURITY.md |
 | H-2 Oracle allowlist               | 🟢     | Oracle problem · Trust assumption                |
 | H-3 IoT Merkle proof verification  | 🟢     | Merkle · Hash · Data integrity · Verification    |
-| H-4 DID Document hash check        | 🟠     | Documented threat; demo doesn't fetch DID Documents |
 | M-1 Recipient consent (open)       | 🟠     | Documented as known limitation                   |
 
-Regression tests live in `prototype/test/Security.test.ts` (7 cases).
+Regression tests live in `prototype/test/Security.test.ts` (5 cases).
 
 ---
 
@@ -178,8 +177,6 @@ T3-T4 concepts in a way the original concept map doesn't:
 
 | Concept                            | Primary file                                          |
 |------------------------------------|-------------------------------------------------------|
-| DID Registry                       | `prototype/contracts/DIDRegistry.sol`                 |
-| VC Anchor + issuer allowlist       | `prototype/contracts/CarrierCredential.sol`           |
 | Consignment + custody (state mach.)| `prototype/contracts/ConsignmentRegistry.sol`         |
 | IoT Merkle + verifyReading         | `prototype/contracts/MerkleIoT.sol`                   |
 | Oracle simulator                   | `prototype/scripts/oracle-simulator.ts`               |

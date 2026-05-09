@@ -1,6 +1,6 @@
 # PROJECT PLAN — GX: CargoChain
 
-## Public-Chain Multi-Modal Logistics Platform with SSI-Verified Stakeholders and IoT Data Integrity
+## Public-Chain Multi-Modal Logistics Platform with IoT Data Integrity
 
 
 
@@ -14,9 +14,10 @@
 ## 1. Executive Summary
 
 **CargoChain** is a logistics platform built on a **public EVM chain**
-(Ethereum Sepolia, with local Hardhat for development) that registers each container/consignment as a
-unique on-chain entity, authenticates every stakeholder via Self-Sovereign
-Identity (DIDs + W3C Verifiable Credentials), and anchors IoT sensor batches
+(local Hardhat for development, EVM-compatible for any public deployment)
+that registers each container/consignment as a unique on-chain entity,
+authenticates stakeholder custody handovers by wallet signature (with DID/VC
+infrastructure noted as a production extension), and anchors IoT sensor batches
 as Merkle roots so any individual reading can be cryptographically verified
 on-chain by anyone.
 
@@ -47,12 +48,11 @@ one-for-one:
 
 | Pain                                              | Blockchain answer (concept from map)                                |
 |---------------------------------------------------|---------------------------------------------------------------------|
-| Paper Bills of Lading, forgery, lost docs         | **Verifiable Credentials** (W3C VCs) + **DIDs** + on-ledger hash anchor |
+| Paper Bills of Lading, forgery, lost docs         | **On-chain manifest hash commitment** (keccak256 anchor + IPFS URI) |
 | "Where is my container?" opacity                  | **On-chain consignment registry** + custody handover events         |
 | Trust between 20+ parties that don't know each other | **Public DLT** + **PoS finality** — no operator to trust         |
 | Carriers don't trust each other's IoT data        | **Merkle-batched proofs** — any reading can be verified on-chain    |
 | Insurance fraud ("cargo was damaged at port X")   | **Oracle-fed IoT** sensor data, **Merkle-batched proofs**           |
-| Slow customs release                              | **VC-gated** custody handovers — instant verification               |
 
 Every problem above is a direct instance of a node in the T1-T6 concept map.
 
@@ -62,28 +62,26 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
 
 ### In scope — demo-able features
 
-1. **Actor onboarding with SSI**
-   - Shipper, Carrier, Customs each get a **DID** anchored on-chain
-   - Issue a **Verifiable Credential** ("Licensed Carrier — Maersk — valid until …")
-   - Allowlisted issuers (audit fix H-1)
-2. **Consignment registration**
+1. **Consignment registration**
    - Shipper signs `createConsignment(manifestHash, manifestURI)` directly — no operator gating
    - The full manifest JSON lives off-chain at `manifestURI`; only its
      keccak256 hash is on-chain
    - State machine: `Created → InTransit → Delivered`
-3. **Custody transfer flow**
+2. **Custody transfer flow**
    - Carrier calls `transferCustody(id, to, location, handshake)`
-   - Recipient must hold an active `LicensedCarrier` VC — enforced by the contract
+   - Current custodian check enforced on-chain (`msg.sender == currentCustodian`)
    - Custody history is appended on-chain
-4. **IoT oracle feed**
+   - NOTE: DID/VC gating on the recipient is a documented production extension
+     (see SECURITY.md)
+3. **IoT oracle feed**
    - Mock temperature / GPS sensor pushes signed payloads every 1 s
    - Smart contract stores **Merkle root** of each 8-reading batch
    - Allowlisted oracles only (audit fix H-2)
-5. **On-chain IoT verification**
+4. **On-chain IoT verification**
    - Simulation dashboard subscribes to `BatchAnchored` events
    - Any reading + its Merkle proof can be verified on-chain
    - Tampered readings or wrong proofs are rejected (audit test H-3)
-6. **Auditor view**
+5. **Auditor view**
    - Regulator queries any consignment and sees: shipper, current custodian,
      status, manifest hash, manifest URI, full custody hop list, IoT batch count
 
@@ -91,7 +89,8 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
 
 - Real IoT hardware (we mock the sensor stream)
 - Full legal framework for cross-border Bill of Lading recognition
-- Production-grade Aries agents (we implement a simplified VC/DID flow)
+- DID/VC contracts (DIDRegistry, CarrierCredential) — discussed in report
+  as production extensions; removed from prototype per professor feedback
 - **On-chain payment** (originally in scope; removed per professor feedback)
 - **ZK escrow** (same)
 - **ERC-721 token wrapper** (replaced with a plain registry per professor feedback)
@@ -102,13 +101,12 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
 
 | Layer                  | Choice                                            | T1-T6 node exercised                                |
 |------------------------|---------------------------------------------------|-----------------------------------------------------|
-| Blockchain runtime     | **Ethereum Sepolia** (public PoS testnet)         | Public BC · DLT · Block · Tx · P2P                  |
+| Blockchain runtime     | **EVM-compatible** (public PoS testnet)           | Public BC · DLT · Block · Tx · P2P                  |
 | Local dev environment  | **Hardhat node**                                  | Block · Tx · Mempool                                |
 | Smart-contract lang    | **Solidity 0.8.26**                               | Solidity · Smart Contract · Purpose-driven          |
 | Contract design        | Plain registry, **no token standard**             | Smart Contract · State Machine · Tokenisation (discussion) |
 | Consensus              | **PoS** (Ethereum)                                 | PoS · Validators · Slashing · Finality              |
-| Identity               | DIDs anchored as `address → docHash`              | SSI · DIDs · DID Document · Verifiable Data Registry|
-| Credentials            | **W3C Verifiable Credentials v2**                  | VCs · VC Lifecycle · Issuer/Holder/Verifier         |
+| Identity (discussion)  | DIDs + W3C VCs — analysed as production extension | SSI · DIDs · DID Document · Verifiable Data Registry|
 | Wallet (user-side)     | MetaMask + dev-signer fallback                    | Wallet · Public-key cryptography · Hot wallet       |
 | Off-chain proofs       | **Merkle trees** for IoT batches                  | Merkle · Hash · Data integrity                      |
 | Oracle                 | Custom signed-payload oracle (Ed25519, m-of-n)    | Oracle · Off-chain data · Non-repudiation           |
@@ -124,6 +122,7 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
 | ERC-721 ConsignmentNFT   | The token standard's transfer semantics don't model physical custody handovers; storing manifest data on-chain misuses storage |
 | FreightEscrow + FreightToken | Payment isn't the course's core blockchain content       |
 | circom / snarkjs / ZK escrow | ZK was tied to payment; without payment, IoT integrity via Merkle proofs covers the same "verify without revealing" theme |
+| DIDRegistry + CarrierCredential | Removed per professor feedback; documented as production extension |
 
 ---
 
@@ -132,30 +131,26 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     FRONT-END (Next.js + ethers.js)                 │
-│  Shipper UI · Carrier UI · Customs UI · Simulation UI · Regulator   │
-└───────────────┬───────────────────────────────┬─────────────────────┘
-                │                               │
-                ▼                               ▼
-┌───────────────────────────┐   ┌──────────────────────────────────┐
-│  SSI LAYER (off-chain)    │   │       ORACLE & VERIFY SERVICE     │
-│  - DID resolver           │   │  - IoT simulator (temp/GPS)       │
-│  - VC issuer / verifier   │   │  - Merkle batcher + proof export  │
-│  - Wallet (IndexedDB)     │   │  - JSON files for browser fetch   │
-└──────────┬────────────────┘   └──────────────┬───────────────────┘
-           │                                   │
-           ▼                                   ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SMART CONTRACTS (4 Solidity files)               │
-│       DIDRegistry · CarrierCredential · ConsignmentRegistry         │
-│                          · MerkleIoT                                │
-└──────────────────────────────┬──────────────────────────────────────┘
+│         Shipper UI · Carrier UI · Simulation UI · Regulator         │
+└───────────────┬─────────────────────────────────────────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    SMART CONTRACTS (2 Solidity files)            │
+│              ConsignmentRegistry · MerkleIoT                     │
+└──────────────────────────────┬───────────────────────────────────┘
                                │
-                ┌──────────────┴────────────────┐
-                ▼                               ▼
-      ┌────────────────────┐        ┌────────────────────┐
-      │ Local Hardhat (dev)│        │ Ethereum Sepolia   │
-      │ instant blocks     │        │ (public PoS, ~12s) │
-      └────────────────────┘        └────────────────────┘
+                               ▼
+                    ┌────────────────────┐
+                    │ Local Hardhat (dev)│
+                    │ instant blocks     │
+                    └────────────────────┘
+
+    OFF-CHAIN SIDECARS
+  ┌────────────────────────────┐    ┌────────────────────────────────┐
+  │ IoT Oracle Simulator       │    │ Manifest JSON (IPFS / HTTPS)   │
+  │ (Node.js, Ed25519 signed)  │    │ hashed on-chain, fetched on UI │
+  └────────────────────────────┘    └────────────────────────────────┘
 ```
 
 Layers match the course's Blockchain Reference Architecture (Abed et al. 2023):
@@ -211,11 +206,10 @@ funded by member dues fail. CargoChain takes the public-chain stance.
 |--------------------------------------|---------|---------------------------------------------|
 | Project lead / architect             | S1      | Coherence, slides, report, state of art     |
 | Smart-contract engineer              | S2      | Solidity contracts, tests, gas analysis     |
-| SSI / DID & VC engineer              | S3      | DID registry, issuer/verifier, wallet       |
-| IoT / oracle engineer                | S4      | Oracle simulator, Merkle batcher, simulation page |
-| Front-end & UX                       | S5      | Next.js dashboards, demo video              |
+| IoT / oracle engineer                | S3      | Oracle simulator, Merkle batcher, simulation page |
+| Front-end & UX                       | S4      | Next.js dashboards, demo video              |
 
-(4-person group: merge S4 into S2. 3-person group: merge S5 into S1 + S3.)
+(3-person group: merge S3 into S2. 2-person group: merge S4 into S1.)
 
 ---
 
@@ -234,28 +228,24 @@ Placeholder — to be filled from measurements:
 
 ## 10. Main Challenges (already anticipated)
 
-1. **Public-chain block latency** — Sepolia's 12 s blocks make a live demo
-   feel slower than local Hardhat. Mitigation: run the live demo on local
-   Hardhat (instant blocks); link to a Sepolia tx hash in the slides as
-   public-chain proof.
-2. **Oracle trust problem** — signed payloads + multiple oracle attestations + on-chain allowlist (H-2 fix).
-3. **Key management UX** — seed phrases scare users; the dev-signer fallback
+1. **Oracle trust problem** — signed payloads + multiple oracle attestations + on-chain allowlist (H-2 fix).
+2. **Key management UX** — seed phrases scare users; the dev-signer fallback
    means the demo works without MetaMask. Production would need WalletConnect
    + social recovery.
-4. **Legal recognition** — Bill of Lading is MLETR-only in a few jurisdictions;
+3. **Legal recognition** — Bill of Lading is MLETR-only in a few jurisdictions;
    we discuss on the "challenges" slide rather than claim to solve it.
-5. **DID Document tampering** — fixed (H-4), the resolver re-hashes and rejects mismatches.
+4. **DID/VC gap** — the prototype omits DID/VC gating on custody recipients.
+   The threat model and production mitigation are documented in SECURITY.md.
 
 ---
 
 ## 11. Remaining Work (intermediate → final)
 
-- [x] Build all smart contracts (4 of them) and reach 90 % line coverage on tests
+- [x] Build all smart contracts (2 of them) and reach 90 % line coverage on tests
 - [x] Wire oracle simulator + Merkle proof export
-- [x] Build 5 role-specific dashboards in Next.js (incl. live Simulation page)
+- [x] Build 4 role-specific dashboards in Next.js (incl. live Simulation page)
 - [x] Run a security audit and fix all H-severity findings
 - [x] Compile 14-case-study state-of-the-art document
-- [ ] Deploy to Sepolia and capture transaction hashes for the slides
 - [ ] Record 3-minute demo video
 - [ ] Write 15-20 page report `GX-report.pdf`
 - [ ] Rehearse presentation × 2 (time-box to 15 min)
@@ -270,7 +260,7 @@ Placeholder — to be filled from measurements:
 | Final slides             | `GX-final.pdf` (or `GX.pdf`)   | S1        | Final presentation day |
 | Written report           | `GX-report.pdf`                | All       | Final day              |
 | Demo code                | `GX-demo.zip` (this repo)      | S2 + S3   | Final day              |
-| Demo video (≤ 5 min)     | `GX-video.mp4`                 | S5        | Final day              |
+| Demo video (≤ 5 min)     | `GX-video.mp4`                 | S4        | Final day              |
 
 `X` = actual group number. One student uploads everything.
 
@@ -283,7 +273,6 @@ Placeholder — to be filled from measurements:
 | Public-chain RPC outage during demo              | Medium     | High   | Live demo runs on local Hardhat anyway        |
 | Team member drops out                            | Low        | High   | Roles documented, every component has a buddy |
 | Demo fails live                                  | Medium     | High   | Pre-recorded backup video of the full flow    |
-| Sepolia faucet rate-limits the deploy            | Low        | Med    | Multiple faucets exist (Alchemy, Infura, PoW) |
 
 ---
 
@@ -301,10 +290,10 @@ CargoChain/
 │   ├── SECURITY.md         ← threat model + audit findings
 │   └── CASE_STUDIES.md     ← 14 industry case studies with sources
 └── prototype/
-    ├── contracts/          ← 4 Solidity files
+    ├── contracts/          ← 2 Solidity files
     ├── scripts/            ← deploy + seed + IoT oracle simulator
-    ├── test/               ← 15 Hardhat tests
-    ├── app/                ← Next.js 14 dashboards (5 roles)
+    ├── test/               ← 14 Hardhat tests
+    ├── app/                ← Next.js 14 dashboards (4 roles)
     └── hardhat.config.ts
 ```
 
@@ -314,12 +303,12 @@ Run the full suite:
 
 ```
 cd prototype && npx hardhat test
-# 15 passing
+# 14 passing
 ```
 
 | File                         | Cases | Purpose                                            |
 |------------------------------|-------|----------------------------------------------------|
-| `test/CargoChain.test.ts`    | 2     | Happy-path create + custody + delivery; unlicensed-recipient negative |
-| `test/Errors.test.ts`        | 5     | Custom-error selectors + decoder used by every dashboard |
-| `test/E2E.test.ts`           | 1     | Full 5-dashboard flow with gas measurements + IoT verification |
-| `test/Security.test.ts`      | 7     | Audit regressions: H-1, H-2, H-3 (IoT integrity)   |
+| `test/CargoChain.test.ts`    | 2     | Happy-path create + custody + delivery; non-custodian negative |
+| `test/Errors.test.ts`        | 6     | Custom-error selectors + on-chain triggers + decoder used by every dashboard |
+| `test/E2E.test.ts`           | 1     | Full 4-dashboard flow with gas measurements + IoT verification |
+| `test/Security.test.ts`      | 5     | Audit regressions: H-2 (oracle), H-3 (IoT integrity), custody gate |

@@ -1,24 +1,27 @@
 # SECURITY REVIEW — CargoChain
 
-> **Scope:** all 4 Solidity contracts + scripts/oracle simulator + Next.js front-end libs.
+> **Scope:** 2 Solidity contracts (ConsignmentRegistry, MerkleIoT) + scripts/oracle simulator + Next.js front-end libs.
 > **Approach:** read-through of each module → identify trust boundaries → enumerate
 > what an adversary controls at each one → write a failing test → patch the code →
 > re-run the suite. Every fix below has a one-to-one test in
 > [`prototype/test/Security.test.ts`](../prototype/test/Security.test.ts).
-> **Test count after fixes:** **15 passing** across `CargoChain.test.ts`,
+> **Test count after fixes:** **14 passing** across `CargoChain.test.ts`,
 > `Errors.test.ts`, `E2E.test.ts`, `Security.test.ts`.
 
 > **Scope changes (April 2026):** The original audit identified five findings
 > (H-1 through M-2). After the professor-driven scope reduction (no payment,
-> no ZK escrow, no ERC-721), three findings changed status:
+> no ZK escrow, no ERC-721, no DID/VC contracts), findings changed status:
+> - **H-1** (VC issuer allowlist) — not applicable. The CarrierCredential contract
+>   was removed from the prototype scope per professor feedback. See the
+>   "Designed but not implemented" section below.
 > - **H-3** was about ZK proof binding on FreightEscrow → that contract is gone.
 >   The H-3 slot is now filled with a different but equally important property:
 >   **on-chain Merkle proof verification of IoT readings**. Same severity, same
 >   "data integrity under adversarial input" theme.
 > - **H-4** (DID Document hash check) was implemented as a front-end resolver
->   helper that no demo page actually called. Rather than keep dead code, we
->   deleted it and demoted H-4 to a documented threat in the "Designed but
->   not implemented" section below — honest about the gap.
+>   helper that no demo page actually called — and DIDRegistry itself has been
+>   removed. Rather than keep dead code, we deleted it and documented the threat
+>   here for completeness.
 > - **M-2** (refund-after-custody) is gone with the escrow.
 
 ---
@@ -27,7 +30,7 @@
 
 | Tag    | Meaning                                                               |
 |--------|-----------------------------------------------------------------------|
-| 🔴 H   | Trust model is broken — adversary can mint VCs, fake IoT, forge data  |
+| 🔴 H   | Trust model is broken — adversary can fake IoT, forge data            |
 | 🟠 M   | Behaviour is wrong but adversary needs a special precondition         |
 | 🟢 L   | Defence-in-depth, hardening, code smell                               |
 | ⚪ Info | Documented limitation by design (demo trade-off)                      |
@@ -36,25 +39,30 @@
 
 ## Findings
 
-### 🔴 H-1 · Anyone could issue any Verifiable Credential (FIXED)
+### ⚪ H-1 · VC issuer allowlist — not applicable
 
-**Location:** [`CarrierCredential.sol`](../prototype/contracts/CarrierCredential.sol) `issueVC`
+**Status:** not applicable. The `CarrierCredential` contract was removed from
+the prototype scope per professor feedback.
 
-**Before:** the only check was `dids.isActive(msg.sender)` — i.e. *any*
-DID-active address could issue itself or a friend a `LicensedCarrier` VC and
-bypass every custody check downstream. The whole point of SSI on-chain is
-that verifiers trust the *issuer*, not just any caller.
+**Threat model (documented for completeness):** without an approved-issuer
+allowlist, any DID-active address could mint itself a `LicensedCarrier`
+credential and bypass every custody check downstream. The whole point of
+SSI on-chain is that verifiers trust the *issuer*, not just any caller.
 
-**Attack:** Mallory registers her DID, calls
+**Attack (hypothetical):** Mallory registers her DID, calls
 `issueVC(mallory, LicensedCarrier, ...)`, and now `subjectHasActiveVC` returns
 `true`. Custody can be transferred to her even though no licensing authority
 ever signed off.
 
-**Fix:** owner-managed `mapping(Schema => mapping(address => bool)) approvedIssuer`
-plus a `setApprovedIssuer(schema, issuer, bool)` setter. `issueVC` now reverts
-with `IssuerNotApproved()` if the caller isn't on the schema's allowlist.
+**Mitigation pattern for production:** owner-managed
+`mapping(Schema => mapping(address => bool)) approvedIssuer` plus a
+`setApprovedIssuer(schema, issuer, bool)` setter. `issueVC` reverts with
+`IssuerNotApproved()` if the caller isn't on the schema's allowlist.
 
-**Test:** `Security.test.ts → "H-1 Untrusted issuers cannot mint VCs"` (3 cases).
+**Current prototype:** no VC issuance exists. Custody gating is by
+`msg.sender == currentCustodian` only. In a production deployment, a
+`CarrierCredential` contract or equivalent would need the issuer-allowlist
+protection described above.
 
 ---
 
@@ -103,27 +111,21 @@ tree). Constant-gas verification path; ~30 k gas for an 8-leaf batch.
 
 ## Designed but not implemented (honest gap)
 
-### 🟠 H-4 · DID Document fetched without hash check
+### ⚪ H-1 (expanded) · CarrierCredential and DID-gated custody
 
-**Threat:** a real production system would fetch DID Documents from off-chain
-gateways (IPFS or HTTPS). A malicious gateway, hijacked DNS, or swapped IPFS
-pin could serve a forged document with a fresh signing key, and the verifier
-would happily authenticate VCs against it.
+**Threat:** a production system would validate that the custody recipient (a)
+has an active DID on a public registry and (b) holds a `LicensedCarrier`
+Verifiable Credential issued by an approved authority before allowing
+`transferCustody` to proceed.
 
-**Mitigation pattern:** read the response as text, recompute
-`keccak256(toUtf8Bytes(text))`, compare to the on-chain `documentHash`, throw
-on mismatch *before* parsing. The on-chain registry is the source of truth.
+**Current status:** **not implemented.** The `DIDRegistry` and
+`CarrierCredential` contracts were removed from the prototype. The current
+`transferCustody` only checks `msg.sender == currentCustodian`. The DID/VC
+layer is documented in the report as a production extension.
 
-**Demo status:** **not implemented.** Our demo dashboards reference DIDs by
-Ethereum address directly and don't fetch off-chain DID Document JSON, so the
-attack surface doesn't exist in the running code. The earlier version had a
-`did-resolver.ts` helper that enforced the hash check, but no UI page called
-it — dead code. We removed it rather than ship a fix to a function the demo
-never reaches.
-
-A production deployment would (a) build a UI that resolves DIDs to Documents,
-and (b) reuse the keccak256-comparison pattern shown above. The on-chain
-primitives (`DIDRegistry.documentHash`) already support it.
+A production deployment would (a) add a `DIDRegistry` + `CarrierCredential`
+with approved-issuer allowlists, and (b) add checks in `transferCustody` for
+`dids.isActive(to)` and `creds.subjectHasActiveVC(to, LicensedCarrier)`.
 
 ---
 
@@ -150,10 +152,11 @@ check.
 
 **Status:** documented limitation.
 **Reasoning:** EIP-712 signed handshake from `to` would double the call surface.
-For the demo we treat the licensed-carrier VC as standing consent ("I accept
-custody of any consignment offered to me as long as my license is active"). A
-production system should require a typed-data signature from the receiver, or
-flip to a pull-model where the receiver calls `acceptCustody(tokenId)`.
+For the demo, the custodian check (`msg.sender == currentCustodian`) is the
+gate. A production system should require a typed-data signature from the
+receiver, or flip to a pull-model where the receiver calls
+`acceptCustody(tokenId)`. A DID/VC check on the recipient would also be added
+in production (see H-1 gap above).
 
 ### ⚪ M-3 · `NEXT_PUBLIC_DEV_KEY` is exposed to the browser bundle
 
@@ -164,22 +167,6 @@ the client bundle. The fallback dev signer in
 demo with no MetaMask. The key is a Hardhat default — never use it on a live
 network. README and the report explicitly call this out.
 
-### 🟢 L-1 · VC wallet stores credentials unencrypted in IndexedDB
-
-**Status:** acknowledged.
-**Reasoning:** browser-extension wallets (MetaMask) and proper SSI agents
-(Hyperledger Aries) handle key/credential encryption. We didn't reimplement
-that. Future work: encrypt with a user-derived key (e.g. PBKDF2 over a
-passphrase) before storage.
-
-### 🟢 L-3 · Naive DID parsing in front-end helpers
-
-**Status:** known.
-**Reasoning:** uses `did.split(":").pop()` to get the address. Adequate for
-our demo's `did:cargochain:<chainId>:<addr>` format. A general-purpose resolver
-should follow the [W3C DID Method spec](https://www.w3.org/TR/did-core/) and
-handle methods like `did:web` or `did:ion`.
-
 ---
 
 ## Trust boundaries (after fixes)
@@ -187,30 +174,35 @@ handle methods like `did:web` or `did:ion`.
 ```
                 ┌──────────────────────────────────────────────┐
                 │  CONTRACT OWNER (deployer / future multisig) │
-                │  - approves issuers (per VC schema)          │
                 │  - approves IoT oracles                      │
                 └────────────────┬─────────────────────────────┘
-                                 │ setApprovedIssuer / setApprovedOracle
+                                 │ setApprovedOracle
                                  ▼
-       ┌──────────────────────┐  approves  ┌─────────────────────────┐
-       │ Approved VC Issuers  │◄───────────│ Approved IoT Oracles    │
-       │ (licensing bodies)   │            │ (sensor gateways)       │
-       └──────────┬───────────┘            └────────────┬────────────┘
-                  │ issueVC                              │ anchorBatch
-                  ▼                                      ▼
-      ┌────────────────────────┐             ┌──────────────────────────┐
-      │ CarrierCredential.sol  │             │ MerkleIoT.sol            │
-      │ - per-schema allowlist │             │ - per-address allowlist  │
-      │ - VC lifecycle         │             │ - verifyReading() public │
-      └──────────┬─────────────┘             └────────────┬─────────────┘
-                 │  isValid / subjectHasActiveVC          │  read-only,
-                 ▼                                        │  no auth needed
-      ┌─────────────────────────────────┐                 ▼
-      │ ConsignmentRegistry.sol         │       ┌──────────────────────┐
-      │ - public createConsignment      │       │ Anyone can verify    │
-      │ - VC-gated transferCustody      │       │ any reading          │
-      │ - state-machine invariants      │       └──────────────────────┘
-      └─────────────────────────────────┘
+                    ┌─────────────────────────┐
+                    │ Approved IoT Oracles     │
+                    │ (sensor gateways)        │
+                    └────────────┬────────────┘
+                                 │ anchorBatch
+                                 ▼
+                    ┌──────────────────────────┐
+                    │ MerkleIoT.sol            │
+                    │ - per-address allowlist  │
+                    │ - verifyReading() public │
+                    └────────────┬─────────────┘
+                                 │ read-only, no auth needed
+                                 ▼
+                    ┌──────────────────────────┐
+                    │ Anyone can verify        │
+                    │ any reading              │
+                    └──────────────────────────┘
+
+  ConsignmentRegistry.sol — standalone (no VC/DID checks in prototype)
+  ┌────────────────────────────────────────┐
+  │ - public createConsignment             │
+  │ - transferCustody: msg.sender check    │
+  │   (DID+VC check → production extension)│
+  │ - state-machine invariants             │
+  └────────────────────────────────────────┘
 ```
 
 ---
@@ -221,19 +213,18 @@ Every fix above is asserted by a regression test:
 
 | Finding                  | File                                | Test (`describe` block)                                  |
 |--------------------------|-------------------------------------|----------------------------------------------------------|
-| H-1                      | `CarrierCredential.sol`             | `H-1 Untrusted issuers cannot mint VCs` (3 cases)        |
 | H-2                      | `MerkleIoT.sol`                     | `H-2 Untrusted oracles cannot anchor IoT batches` (2)    |
 | H-3 (IoT integrity)      | `MerkleIoT.sol`                     | `H-3 IoT data integrity (Merkle proof verification)` (2) |
-| Decoder errors visible   | `app/lib/errors.ts`                 | `Errors.test.ts` (5)                                     |
+| Decoder errors visible   | `app/lib/errors.ts`                 | `Errors.test.ts` (6)                                     |
 | Negative custody         | `ConsignmentRegistry.sol`           | `CargoChain.test.ts → "blocks custody transfer..."` (1)  |
-| Full happy path + IoT    | all 4 contracts                     | `E2E.test.ts → "full flow"` (1)                          |
+| Full happy path + IoT    | ConsignmentRegistry + MerkleIoT     | `E2E.test.ts → "full flow"` (1)                          |
 
 Run the suite:
 
 ```bash
 cd prototype
 npx hardhat test
-# 15 passing
+# 14 passing
 ```
 
 ---
@@ -243,10 +234,11 @@ npx hardhat test
 Add one slide between *"Main Findings"* and *"Challenges"* titled
 **"Threat model + audit"**, with three bullets:
 
-- **3 attacks we hardened against** (H-1, H-2, H-3 IoT) — each in one sentence
-- **7 dedicated security tests** prove the fixes can't regress
-- **One documented but unimplemented threat** (H-4 DID Document tampering) —
-  with the mitigation pattern explained, just not wired into the demo
+- **2 attacks we hardened against** (H-2 oracle allowlist, H-3 IoT Merkle
+  integrity) — each in one sentence
+- **5 dedicated security tests** prove the fixes can't regress
+- **One documented but unimplemented threat** (H-1 DID/VC-gated custody) —
+  with the mitigation pattern explained, noted as a production extension
 
 Mention that **two original findings (H-3 escrow, M-2) are obsolete** because
 the payment scope was removed. Treat that as a maturity signal, not a

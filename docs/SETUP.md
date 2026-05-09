@@ -89,7 +89,7 @@ cd prototype
 npm run deploy:local
 ```
 
-The script deploys 4 contracts and prints their addresses. The default
+The script deploys 2 contracts and prints their addresses. The default
 Hardhat account starts with nonce 0, so the addresses are deterministic and
 already match what `prototype/app/.env.local` expects.
 
@@ -97,20 +97,9 @@ Expected output:
 
 ```
 Deployer: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-DIDRegistry        : 0x5FbDB2315678afecb367f032d93F642f64180aa3
-CarrierCredential  : 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
-ConsignmentRegistry: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
-MerkleIoT          : 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+ConsignmentRegistry: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+MerkleIoT          : 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
 ```
-
-For a public-chain deploy instead:
-
-```bash
-npm run deploy:sepolia   # Ethereum Sepolia testnet
-```
-
-(Requires `DEPLOYER_KEY` in `prototype/.env` and a small amount of testnet
-ETH from a Sepolia faucet, e.g. <https://sepoliafaucet.com>.)
 
 ---
 
@@ -124,19 +113,18 @@ npx hardhat run scripts/seed.ts --network localhost
 
 This sets up five demo identities and one consignment:
 
-| Hardhat # | Role     | Demo name      | Has LicensedCarrier VC? |
-|-----------|----------|----------------|-------------------------|
-| #0        | issuer   | IATA           | (issues VCs)            |
-| #1        | carrier  | TAP Air Cargo  | yes                     |
-| #2        | shipper  | Pfizer         | no (shippers don't need one) |
-| #3        | carrier  | DHL Aviation   | yes                     |
-| #4        | receiver | MSF Luanda     | yes (so it can take final custody) |
+| Hardhat # | Role     | Demo name      |
+|-----------|----------|----------------|
+| #0        | admin    | IATA           |
+| #1        | carrier  | TAP Air Cargo  |
+| #2        | shipper  | Pfizer         |
+| #3        | carrier  | DHL Aviation   |
+| #4        | receiver | MSF Luanda     |
 
 After seeding:
 - Demo consignment **#1** is created — Pfizer shipping HBL-2026-042 (Lisbon → Luanda)
-- All addresses are printed at the end of seed output for reference
 
-You won't need to copy any of those addresses into the UI — the **AccountPicker
+You won't need to copy any addresses into the UI — the **AccountPicker
 in the top-right of every dashboard** lets you pick which identity is signing
 on the fly (no env edits, no restarts, no Hardhat console).
 
@@ -151,14 +139,13 @@ cd prototype/app
 npm run dev
 ```
 
-Open <http://localhost:3000>. Five role-based dashboards are linked from the
+Open <http://localhost:3000>. Four role-based dashboards are linked from the
 home page:
 
 | Path           | Role        | Action                                                         |
 |----------------|-------------|----------------------------------------------------------------|
 | `/shipper`     | Shipper     | Create a consignment (manifest hash + URI)                     |
-| `/carrier`     | Carrier     | Transfer custody (recipient must hold a `LicensedCarrier` VC)  |
-| `/customs`     | Customs     | Verify a Verifiable Credential by schema                       |
+| `/carrier`     | Carrier     | Transfer custody (current custodian check enforced on-chain)   |
 | `/simulation`  | Simulation  | Watch IoT batches anchor live + verify any reading on-chain    |
 | `/regulator`   | Regulator   | Full audit trail for any consignment                           |
 
@@ -179,7 +166,7 @@ In a fourth terminal:
 
 ```bash
 cd prototype
-MERKLE_ADDR=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 \
+MERKLE_ADDR=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 \
 TOKEN_ID=1 \
 npm run oracle:sim
 ```
@@ -198,25 +185,24 @@ Merkle path and answer ✅ or ❌.
 
 ## 8b. Recommended end-to-end demo flow
 
-Here's the cleanest "all five dashboards in 2 minutes" demo using the picker.
+Here's the cleanest "all four dashboards in 2 minutes" demo using the picker.
 Consignment **#1** has already been created by `seed.ts` (Pfizer is the
 current custodian).
 
 | # | Pick (top-right)  | Page         | What you do                                                              |
 |---|-------------------|--------------|--------------------------------------------------------------------------|
 | 1 | **Pfizer**        | `/carrier`   | Token=`1`, Recipient=TAP's address, Location=`PTLIS` → Transfer Custody |
-| 2 | (any)             | `/customs`   | Subject=TAP's address, Schema=`LicensedCarrier` → **VALID ✓**           |
-| 3 | (any)             | `/simulation`| Token=`1`, Start watching, Load Readings → click **Verify** on a row    |
-| 4 | **TAP Air Cargo** | `/carrier`   | Token=`1`, Recipient=DHL's address, Location=`LISBOA-FRA` → Transfer    |
-| 5 | **DHL Aviation**  | `/carrier`   | Token=`1`, Recipient=MSF's address, Location=`AOLAD` → Transfer         |
-| 6 | **MSF Luanda**    | `/carrier`   | Token=`1` → **Mark Delivered**                                          |
-| 7 | (any)             | `/regulator` | Token=`1`, Run Audit → 3 hops, Status: Delivered, IoT batches anchored  |
+| 2 | (any)             | `/simulation`| Token=`1`, Start watching, Load Readings → click **Verify** on a row    |
+| 3 | **TAP Air Cargo** | `/carrier`   | Token=`1`, Recipient=DHL's address, Location=`LISBOA-FRA` → Transfer    |
+| 4 | **DHL Aviation**  | `/carrier`   | Token=`1`, Recipient=MSF's address, Location=`AOLAD` → Transfer         |
+| 5 | **MSF Luanda**    | `/carrier`   | Token=`1` → **Mark Delivered**                                          |
+| 6 | (any)             | `/regulator` | Token=`1`, Run Audit → 3 hops, Status: Delivered, IoT batches anchored  |
 
 You can grab each address from the AccountPicker dropdown — it's right there
 in the entry for that role.
 
 For a one-take recording, start the IoT oracle (step 8) before you begin so
-batches are accumulating while you walk through hops 1 → 6.
+batches are accumulating while you walk through hops 1 → 5.
 
 ---
 
@@ -230,17 +216,17 @@ npx hardhat test
 You should see:
 
 ```
-  15 passing (~700ms)
+  14 passing (~700ms)
 ```
 
 Broken down by file:
 
-| File                         | Cases | Purpose                                                     |
-|------------------------------|-------|-------------------------------------------------------------|
-| `test/CargoChain.test.ts`    | 2     | Happy path: create, custody, deliver. Negative path on unlicensed recipient |
-| `test/Errors.test.ts`        | 5     | Custom-error selectors + dashboard friendly-message decoder |
-| `test/E2E.test.ts`           | 1     | Full shipper → carrier → customs → IoT → receiver → regulator flow with gas |
-| `test/Security.test.ts`      | 7     | One regression per audit finding (H-1, H-2, H-3 IoT)        |
+| File                         | Cases | Purpose                                                                    |
+|------------------------------|-------|----------------------------------------------------------------------------|
+| `test/CargoChain.test.ts`    | 2     | Happy path: create, custody, deliver. Negative: non-custodian blocked      |
+| `test/Errors.test.ts`        | 6     | Custom-error selectors + on-chain triggers + dashboard decoder             |
+| `test/E2E.test.ts`           | 1     | Full shipper → carrier → IoT → simulation → receiver → regulator flow      |
+| `test/Security.test.ts`      | 5     | H-2 oracle allowlist (2) + H-3 Merkle integrity (2) + custody gate (1)    |
 
 ---
 
@@ -250,13 +236,10 @@ Broken down by file:
 |----------------------------------------------------|------------------------------------------------------------|
 | `cannot connect to network localhost`              | The Hardhat node terminal isn't running. Start step 4.     |
 | Carrier dashboard shows `NotCurrentCustodian`      | You're signing as the wrong identity. Pick the *current* custodian in the top-right picker (Run Regulator audit to see who holds it). |
-| Carrier dashboard shows `RecipientNotLicensed`     | The recipient address has a DID but no VC. Use one of the seeded carrier addresses (TAP, DHL, MSF). |
-| Carrier dashboard shows `RecipientNotActive`       | The recipient has no DID. Run `seed.ts` first.             |
 | Simulation page shows "Batch JSON not found"       | The oracle simulator hasn't run yet. Start it (step 8).    |
 | Port 3000 already in use                           | `lsof -i :3000` (or `netstat -ano | findstr 3000` on Windows) → kill or `PORT=3001 npm run dev` |
 | Front-end says `NEXT_PUBLIC_REGISTRY not set`      | `prototype/app/.env.local` is missing the addresses. Re-run `npm run deploy:local` and copy the printed block. |
 | MetaMask shows the wrong network                   | Add Hardhat network manually: RPC `http://127.0.0.1:8545`, chainId `31337` |
-| Sepolia deploy times out                           | Public RPC can be flaky. Set `SEPOLIA_RPC` in `prototype/.env` to an Alchemy / Infura endpoint. |
 
 ---
 
