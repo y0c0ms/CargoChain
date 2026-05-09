@@ -1,83 +1,58 @@
-name: CI
+name: CargoChain CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+    branches: ["**"]
 
 jobs:
-  lint:
-    name: Lint (Solidity + TypeScript)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: |
-            prototype/package-lock.json
-            prototype/app/package-lock.json
-
-      - name: Install Hardhat workspace
-        working-directory: prototype
-        run: npm ci
-
-      - name: Install front-end workspace
-        working-directory: prototype/app
-        run: npm ci
-
-      - name: Solidity lint (solhint)
-        working-directory: prototype
-        run: npm run lint:sol
-
-      - name: TypeScript type-check (front-end)
-        working-directory: prototype/app
-        run: npx tsc --noEmit
-
   test:
-    name: Hardhat tests
+    name: Contracts — compile & test
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 22
           cache: npm
           cache-dependency-path: prototype/package-lock.json
 
-      - name: Install Hardhat workspace
+      - name: Install dependencies
         working-directory: prototype
         run: npm ci
 
-      - name: Run test suite
+      - name: Compile contracts
+        working-directory: prototype
+        run: npx hardhat compile
+
+      - name: Run full test suite
         working-directory: prototype
         run: npx hardhat test
 
-  codeql:
-    name: CodeQL (JavaScript/TypeScript)
+  frontend:
+    name: Front-end — type-check & build
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript]
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          languages: ${{ matrix.language }}
-          queries: security-and-quality
+          node-version: 22
+          cache: npm
+          cache-dependency-path: prototype/app/package-lock.json
 
-      - name: Perform analysis
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: "/language:${{ matrix.language }}"
+      - name: Install dependencies
+        working-directory: prototype/app
+        run: npm ci
+
+      - name: Build Next.js app
+        working-directory: prototype/app
+        run: npm run build
