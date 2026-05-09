@@ -8,7 +8,6 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
-    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
     "oracle:sim": "tsx scripts/oracle-simulator.ts",
     "app:dev": "cd app && next dev",
     "app:build": "cd app && next build",
