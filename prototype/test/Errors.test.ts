@@ -9,34 +9,35 @@ import { keccak256, toUtf8Bytes } from "ethers";
  * red-banner error display.
  */
 describe("Friendly error decoding — dashboard revert messages", () => {
-  it("RecipientNotLicensed fires with selector 0x3cf806b4", async () => {
-    const [, shipper, unlicensed] = await ethers.getSigners();
+  it("NotCurrentCustodian fires on-chain when caller is not custodian", async () => {
+    const [, shipper, stranger] = await ethers.getSigners();
+    const registry = await ethers.deployContract("ConsignmentRegistry");
 
-    const dids     = await ethers.deployContract("DIDRegistry");
-    const creds    = await ethers.deployContract("CarrierCredential",   [await dids.getAddress()]);
-    const registry = await ethers.deployContract("ConsignmentRegistry", [
-      await creds.getAddress(), await dids.getAddress(),
-    ]);
-
-    // Register shipper + unlicensed (both with DIDs, but no VC for unlicensed)
-    await dids.connect(shipper).register(
-      keccak256(toUtf8Bytes("doc-shipper")), "ipfs://did/shipper"
-    );
-    await dids.connect(unlicensed).register(
-      keccak256(toUtf8Bytes("doc-unlic")), "ipfs://did/unlic"
-    );
-
-    // Shipper creates consignment
     await registry.connect(shipper).createConsignment(
       keccak256(toUtf8Bytes("manifest")), "ipfs://m/1"
     );
 
-    // Try to transfer to unlicensed → should revert with RecipientNotLicensed
+    await expect(
+      registry.connect(stranger).transferCustody(
+        1n, await stranger.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
+      )
+    ).to.be.revertedWithCustomError(registry, "NotCurrentCustodian");
+  });
+
+  it("AlreadyDelivered fires on-chain when transferring after delivery", async () => {
+    const [, shipper] = await ethers.getSigners();
+    const registry = await ethers.deployContract("ConsignmentRegistry");
+
+    await registry.connect(shipper).createConsignment(
+      keccak256(toUtf8Bytes("manifest")), "ipfs://m/1"
+    );
+    await registry.connect(shipper).markDelivered(1n);
+
     await expect(
       registry.connect(shipper).transferCustody(
-        1n, await unlicensed.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
+        1n, await shipper.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
       )
-    ).to.be.revertedWithCustomError(registry, "RecipientNotLicensed");
+    ).to.be.revertedWithCustomError(registry, "AlreadyDelivered");
   });
 
   it("NotCurrentCustodian selector is 0x608cc9d2", () => {
@@ -44,25 +45,26 @@ describe("Friendly error decoding — dashboard revert messages", () => {
     expect(sel).to.equal("0x608cc9d2");
   });
 
-  it("RecipientNotLicensed selector is 0x3cf806b4", () => {
-    const sel = ethers.id("RecipientNotLicensed()").slice(0, 10);
-    expect(sel).to.equal("0x3cf806b4");
+  it("AlreadyDelivered selector is 0xb9f79653", () => {
+    const sel = ethers.id("AlreadyDelivered()").slice(0, 10);
+    expect(sel).to.equal("0xb9f79653");
   });
 
-  it("RecipientNotActive selector is 0x693369f6", () => {
-    const sel = ethers.id("RecipientNotActive()").slice(0, 10);
-    expect(sel).to.equal("0x693369f6");
+  it("NotOracle selector is 0x1bc2178f", () => {
+    const sel = ethers.id("NotOracle()").slice(0, 10);
+    expect(sel).to.equal("0x1bc2178f");
   });
 
-  it("ethers Interface parses the known selector back to its error name", () => {
+  it("ethers Interface parses known selectors back to their error names", () => {
     const iface = new ethers.Interface([
-      "error RecipientNotLicensed()",
-      "error NotCurrentCustodian()",
-      "error RecipientNotActive()",
-      "error AlreadyDelivered()",
       "error UnknownConsignment()",
+      "error NotCurrentCustodian()",
+      "error AlreadyDelivered()",
+      "error NotOracle()",
+      "error NotOwner()",
     ]);
-    const parsed = iface.parseError("0x3cf806b4");
-    expect(parsed?.name).to.equal("RecipientNotLicensed");
+    expect(iface.parseError("0x608cc9d2")?.name).to.equal("NotCurrentCustodian");
+    expect(iface.parseError("0xb9f79653")?.name).to.equal("AlreadyDelivered");
+    expect(iface.parseError("0x1bc2178f")?.name).to.equal("NotOracle");
   });
 });

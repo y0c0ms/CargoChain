@@ -3,49 +3,22 @@ import { ethers } from "hardhat";
 import { keccak256, toUtf8Bytes } from "ethers";
 
 /**
- * Happy-path end-to-end test exercising:
- *   DIDRegistry → CarrierCredential → ConsignmentRegistry
+ * Happy-path end-to-end test exercising ConsignmentRegistry:
+ *   create → transferCustody (x2) → markDelivered
  *
- * Concept-map nodes covered: DID · DID Document · VC · VC Lifecycle ·
- * Custody · State Machine · Smart Contracts · Identity + Smart Contracts ·
- * Immutability · Hash · Data Integrity.
+ * Concept-map nodes covered: Custody · State Machine · Smart Contracts ·
+ * Immutability · Hash · Data Integrity · Events (audit trail).
  */
 describe("CargoChain happy path", () => {
   async function deployAll() {
-    const [owner, shipper, carrierA, carrierB, issuer] = await ethers.getSigners();
-
-    const dids     = await ethers.deployContract("DIDRegistry");
-    const creds    = await ethers.deployContract("CarrierCredential",   [await dids.getAddress()]);
-    const registry = await ethers.deployContract("ConsignmentRegistry", [
-      await creds.getAddress(),
-      await dids.getAddress(),
-    ]);
-
-    // Register DIDs for every party
-    const register = async (signer: any) =>
-      dids.connect(signer).register(
-        keccak256(toUtf8Bytes(`did-doc-${await signer.getAddress()}`)),
-        `ipfs://did/${await signer.getAddress()}`
-      );
-    await register(shipper);
-    await register(carrierA);
-    await register(carrierB);
-    await register(issuer);
-
-    // Owner approves the issuer for the LicensedCarrier schema (post H-1 fix)
-    await creds.connect(owner).setApprovedIssuer(0, await issuer.getAddress(), true);
-
-    // Issuer grants a LicensedCarrier VC to both carriers
-    await creds.connect(issuer).issueVC(await carrierA.getAddress(), 0, keccak256(toUtf8Bytes("vc-A")), 0, 0);
-    await creds.connect(issuer).issueVC(await carrierB.getAddress(), 0, keccak256(toUtf8Bytes("vc-B")), 0, 0);
-
-    return { dids, creds, registry, shipper, carrierA, carrierB, issuer };
+    const [owner, shipper, carrierA, carrierB, stranger] = await ethers.getSigners();
+    const registry = await ethers.deployContract("ConsignmentRegistry");
+    return { registry, owner, shipper, carrierA, carrierB, stranger };
   }
 
   it("creates a consignment, transfers custody through 2 carriers, marks delivered", async () => {
     const { registry, shipper, carrierA, carrierB } = await deployAll();
 
-    // Shipper creates the consignment (no operator gating — public-chain spirit)
     const manifestHash = keccak256(toUtf8Bytes("manifest-HBL-2026-042"));
     await registry.connect(shipper).createConsignment(manifestHash, "ipfs://manifest/1");
 
@@ -77,12 +50,12 @@ describe("CargoChain happy path", () => {
     expect(await registry.custodianOf(id)).to.equal(await carrierB.getAddress());
     expect(await registry.hopCount(id)).to.equal(2n);
 
-    // Carrier B (now playing receiver) marks delivered
+    // Carrier B (receiver) marks delivered
     await registry.connect(carrierB).markDelivered(id);
     c = await registry.consignments(id);
     expect(c.status).to.equal(2); // Delivered
 
-    // After delivery, no further transfers
+    // After delivery, no further transfers allowed
     await expect(
       registry.connect(carrierB).transferCustody(
         id, await shipper.getAddress(), "PT", keccak256(toUtf8Bytes("late"))
@@ -90,19 +63,19 @@ describe("CargoChain happy path", () => {
     ).to.be.revertedWithCustomError(registry, "AlreadyDelivered");
   });
 
-  it("blocks custody transfer to an unlicensed recipient", async () => {
-    const { registry, shipper, issuer } = await deployAll();
+  it("blocks custody transfer when caller is not the current custodian", async () => {
+    const { registry, shipper, stranger } = await deployAll();
     const manifestHash = keccak256(toUtf8Bytes("manifest-X"));
     await registry.connect(shipper).createConsignment(manifestHash, "ipfs://m");
 
-    // issuer has a DID but no LicensedCarrier VC
+    // stranger has never had custody — should revert
     await expect(
-      registry.connect(shipper).transferCustody(
+      registry.connect(stranger).transferCustody(
         1n,
-        await issuer.getAddress(),
+        await stranger.getAddress(),
         "PTLIS",
         keccak256(toUtf8Bytes("no-handshake"))
       )
-    ).to.be.revertedWithCustomError(registry, "RecipientNotLicensed");
+    ).to.be.revertedWithCustomError(registry, "NotCurrentCustodian");
   });
 });

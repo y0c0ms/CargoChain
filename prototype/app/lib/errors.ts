@@ -5,7 +5,7 @@ import { ethers } from "ethers";
  *
  * When a Solidity custom error reverts a transaction, ethers v6 surfaces the
  * 4-byte selector as `err.data` (or `err.info.error.data`, depending on
- * provider). Raw this looks like `0x3cf806b4`, which is useless to a user.
+ * provider). Raw this looks like `0x608cc9d2`, which is useless to a user.
  *
  * We build an ethers `Interface` with every custom error declared by our
  * contracts and let it do the parsing + arg decoding, then map the error name
@@ -13,64 +13,24 @@ import { ethers } from "ethers";
  * ethers' own `shortMessage`.
  */
 const errorIface = new ethers.Interface([
-  // DIDRegistry
-  "error NotRegistered()",
-  "error AlreadyRegistered()",
-  "error Revoked()",
-  // CarrierCredential
-  "error IssuerNotActive()",
-  "error SubjectNotActive()",
-  "error AlreadyIssued()",
-  "error NotIssuer()",
-  "error VCNotFound()",
   // ConsignmentRegistry
   "error UnknownConsignment()",
-  "error ShipperNotActive()",
   "error NotCurrentCustodian()",
-  "error RecipientNotLicensed()",
-  "error RecipientNotActive()",
   "error AlreadyDelivered()",
-  // Access control (H-1, H-2)
-  "error IssuerNotApproved()",
+  // MerkleIoT
   "error NotOracle()",
   "error NotOwner()",
 ]);
 
 const FRIENDLY: Record<string, string> = {
-  // DIDRegistry
-  NotRegistered:
-    "The address has no DID registered on-chain. Register it first.",
-  AlreadyRegistered:
-    "This address already has a DID registered.",
-  Revoked:
-    "This DID has been revoked and can no longer be used.",
-  // CarrierCredential
-  IssuerNotActive:
-    "The issuer DID is not active (unregistered or revoked).",
-  SubjectNotActive:
-    "The subject DID is not active (unregistered or revoked).",
-  AlreadyIssued:
-    "A Verifiable Credential with this hash already exists.",
-  NotIssuer:
-    "Only the original issuer can revoke this credential.",
-  VCNotFound:
-    "The requested Verifiable Credential is not on-chain.",
   // ConsignmentRegistry
   UnknownConsignment:
     "No consignment exists with that ID.",
-  ShipperNotActive:
-    "Only an address with an active DID can create a consignment.",
   NotCurrentCustodian:
     "You are not the current custodian — only the holder can transfer or mark delivered.",
-  RecipientNotLicensed:
-    "The recipient is registered but does not hold an active LicensedCarrier Verifiable Credential.",
-  RecipientNotActive:
-    "The recipient address is not registered as an active DID.",
   AlreadyDelivered:
     "This consignment has already been marked Delivered — no further transfers allowed.",
-  // Access control
-  IssuerNotApproved:
-    "This issuer is not on the approved-issuer allowlist for that credential schema.",
+  // MerkleIoT
   NotOracle:
     "Only approved IoT oracles can anchor sensor batches.",
   NotOwner:

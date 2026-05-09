@@ -7,16 +7,14 @@ import { keccak256, toUtf8Bytes, concat, getBytes } from "ethers";
  *
  * Flow:
  *   SHIPPER     : create consignment (manifest hash anchored on-chain)
- *   CARRIER     : take custody (gated by LicensedCarrier VC)
- *   CUSTOMS     : verify carrier holds an active VC
+ *   CARRIER     : take custody
  *   IoT ORACLE  : anchor a Merkle batch of sensor readings
  *   SIMULATION  : verify a specific reading on-chain via Merkle proof
  *   RECEIVER    : take custody at destination, mark delivered
  *   REGULATOR   : read manifest hash + custody history + IoT batch count
  *
- * No payment / ZK escrow — those scope items were removed per professor feedback.
- * Replaced with on-chain Merkle proof verification, which is more directly
- * relevant to the course's data-integrity material.
+ * No payment / ZK escrow — removed per professor feedback.
+ * No DID/VC layer — removed per professor feedback (out of prototype scope).
  */
 
 /** Sorted-pair Merkle node hash, matching MerkleIoT.verifyReading. */
@@ -26,28 +24,15 @@ function pairHash(a: string, b: string): string {
 }
 
 describe("CargoChain — every dashboard interaction", () => {
-  it("runs the full shipper → carrier → customs → simulation → receiver → regulator flow", async () => {
+  it("runs the full shipper → carrier → simulation → receiver → regulator flow", async () => {
     const [deployer, carrier, shipper, receiver] = await ethers.getSigners();
 
     // ─── Deploy ────────────────────────────────────────────────────────────
-    const dids     = await ethers.deployContract("DIDRegistry");
-    const creds    = await ethers.deployContract("CarrierCredential",   [await dids.getAddress()]);
-    const registry = await ethers.deployContract("ConsignmentRegistry", [
-      await creds.getAddress(), await dids.getAddress(),
-    ]);
+    const registry = await ethers.deployContract("ConsignmentRegistry");
     const merkle   = await ethers.deployContract("MerkleIoT");
 
-    // ─── Seed: DIDs, issuer allowlist, oracle allowlist, VCs ───────────────
-    for (const s of [deployer, carrier, shipper, receiver]) {
-      await dids.connect(s).register(
-        keccak256(toUtf8Bytes(`did-doc-${await s.getAddress()}`)),
-        `ipfs://did/${await s.getAddress()}`
-      );
-    }
-    await creds.connect(deployer).setApprovedIssuer(0, await deployer.getAddress(), true);
+    // Approve deployer as trusted IoT oracle (H-2)
     await merkle.connect(deployer).setApprovedOracle(await deployer.getAddress(), true);
-    await creds.connect(deployer).issueVC(await carrier.getAddress(),  0, keccak256(toUtf8Bytes("vc-c")), 0, 0);
-    await creds.connect(deployer).issueVC(await receiver.getAddress(), 0, keccak256(toUtf8Bytes("vc-r")), 0, 0);
 
     // ─── SHIPPER: create consignment ───────────────────────────────────────
     console.log("\n── SHIPPER dashboard ──");
@@ -79,13 +64,6 @@ describe("CargoChain — every dashboard interaction", () => {
     const hop1Rcpt = await hop1Tx.wait();
     console.log(`   handover gas  : ${hop1Rcpt?.gasUsed}`);
     expect(await registry.custodianOf(id)).to.equal(await carrier.getAddress());
-
-    // ─── CUSTOMS: verify carrier VC ────────────────────────────────────────
-    console.log("\n── CUSTOMS dashboard ──");
-    expect(await creds.subjectHasActiveVC(await carrier.getAddress(), 0)).to.equal(true);
-    expect(await creds.subjectHasActiveVC("0x000000000000000000000000000000000000dEaD", 0)).to.equal(false);
-    console.log(`   carrier VC active: true`);
-    console.log(`   random   VC active: false (correctly rejected)`);
 
     // ─── IoT ORACLE: anchor a 2-leaf batch ─────────────────────────────────
     console.log("\n── IoT oracle ──");
