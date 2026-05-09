@@ -5,34 +5,19 @@ import { keccak256, toUtf8Bytes, concat, getBytes } from "ethers";
 /**
  * Security regression suite — one block per audit finding from SECURITY.md.
  *
- * Notes after the scope change (April 2026):
- *   - H-3 was originally about ZK-proof binding on FreightEscrow.
- *     FreightEscrow was removed (no payment in scope per professor feedback).
- *     The new H-3 tests on-chain Merkle-proof verification of IoT readings,
- *     which is now the core data-integrity guarantee of the project.
- *   - M-2 (refund-after-custody) is obsolete with the escrow gone; not tested.
- *
- * Tests are TDD-style: they assert post-fix behaviour and would have failed
- * against the pre-fix code.
+ *   H-1 (VC issuer allowlist) — removed: CarrierCredential contract dropped
+ *       from scope per professor feedback. The concept is documented in
+ *       SECURITY.md as "designed but not implemented in prototype".
+ *   H-2 — Oracle allowlist on MerkleIoT (untrusted oracle cannot anchor batches)
+ *   H-3 — IoT data integrity via on-chain Merkle proof verification
+ *       Also covers: custody transfer gated to current custodian only.
  */
 
 async function setup() {
-  const [owner, alice, bob, carol] = await ethers.getSigners();
-  const dids     = await ethers.deployContract("DIDRegistry");
-  const creds    = await ethers.deployContract("CarrierCredential",   [await dids.getAddress()]);
-  const registry = await ethers.deployContract("ConsignmentRegistry", [
-    await creds.getAddress(), await dids.getAddress(),
-  ]);
+  const [owner, alice, bob] = await ethers.getSigners();
+  const registry = await ethers.deployContract("ConsignmentRegistry");
   const merkle   = await ethers.deployContract("MerkleIoT");
-
-  // Register DIDs for all four signers so other checks pass
-  for (const s of [owner, alice, bob, carol]) {
-    await dids.connect(s).register(
-      keccak256(toUtf8Bytes(`doc-${await s.getAddress()}`)),
-      `ipfs://did/${await s.getAddress()}`
-    );
-  }
-  return { owner, alice, bob, carol, dids, creds, registry, merkle };
+  return { owner, alice, bob, registry, merkle };
 }
 
 /** Sorted-pair Merkle node hash, matching MerkleIoT.verifyReading. */
@@ -40,37 +25,6 @@ function pairHash(a: string, b: string): string {
   const [lo, hi] = BigInt(a) < BigInt(b) ? [a, b] : [b, a];
   return keccak256(concat([getBytes(lo), getBytes(hi)]));
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// H-1  Untrusted issuers cannot mint VCs
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("H-1  Untrusted issuers cannot mint VCs", () => {
-  it("reverts IssuerNotApproved when caller is not on the allowlist", async () => {
-    const { creds, alice, bob } = await setup();
-    const vcHash = keccak256(toUtf8Bytes("forged-vc"));
-    await expect(
-      creds.connect(alice).issueVC(await bob.getAddress(), 0, vcHash, 0, 0)
-    ).to.be.revertedWithCustomError(creds, "IssuerNotApproved");
-  });
-
-  it("succeeds once owner has approved the issuer", async () => {
-    const { creds, owner, alice, bob } = await setup();
-    await creds.connect(owner).setApprovedIssuer(0, await alice.getAddress(), true);
-    const vcHash = keccak256(toUtf8Bytes("real-vc"));
-    await expect(
-      creds.connect(alice).issueVC(await bob.getAddress(), 0, vcHash, 0, 0)
-    ).to.emit(creds, "VCIssued");
-    expect(await creds.subjectHasActiveVC(await bob.getAddress(), 0)).to.equal(true);
-  });
-
-  it("only the owner can manage the issuer allowlist", async () => {
-    const { creds, alice, bob } = await setup();
-    await expect(
-      creds.connect(alice).setApprovedIssuer(0, await bob.getAddress(), true)
-    ).to.be.revertedWithCustomError(creds, "NotOwner");
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // H-2  Untrusted oracles cannot anchor IoT batches
@@ -107,9 +61,7 @@ describe("H-3  IoT data integrity (Merkle proof verification)", () => {
     const root  = pairHash(leafA, leafB);
     await merkle.connect(owner).anchorBatch(1, root, 2, 0, 1);
 
-    // verify leafA with proof [leafB]
     expect(await merkle.verifyReading(1, leafA, [leafB])).to.equal(true);
-    // and leafB with proof [leafA]
     expect(await merkle.verifyReading(1, leafB, [leafA])).to.equal(true);
   });
 
@@ -122,13 +74,21 @@ describe("H-3  IoT data integrity (Merkle proof verification)", () => {
     const root  = pairHash(leafA, leafB);
     await merkle.connect(owner).anchorBatch(1, root, 2, 0, 1);
 
-    // tampered reading should not validate
     const forged = keccak256(toUtf8Bytes("tampered"));
     expect(await merkle.verifyReading(1, forged, [leafB])).to.equal(false);
 
-    // wrong sibling should also fail
     const wrongSibling = keccak256(toUtf8Bytes("not-a-sibling"));
     expect(await merkle.verifyReading(1, leafA, [wrongSibling])).to.equal(false);
   });
-});
 
+  // ── Bonus: custody transfer is gated to current custodian only ───────────
+  it("transferCustody reverts NotCurrentCustodian when caller is not custodian", async () => {
+    const { registry, alice, bob } = await setup();
+    const hash = keccak256(toUtf8Bytes("manifest"));
+    await registry.connect(alice).createConsignment(hash, "ipfs://manifest");
+    // bob is NOT the custodian — alice is
+    await expect(
+      registry.connect(bob).transferCustody(1, await bob.getAddress(), "PTLIS", hash)
+    ).to.be.revertedWithCustomError(registry, "NotCurrentCustodian");
+  });
+});
