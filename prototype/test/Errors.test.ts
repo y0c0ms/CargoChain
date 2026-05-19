@@ -3,68 +3,77 @@ import { ethers } from "hardhat";
 import { keccak256, toUtf8Bytes } from "ethers";
 
 /**
- * Trigger custom errors on-chain, extract the selector returned by the
- * provider, and verify it matches what the front-end's `friendlyError`
- * decoder expects. This is the same logic that powers every dashboard's
- * red-banner error display.
+ * Trigger custom errors on-chain, decode the selector returned by the provider,
+ * and verify it matches what the front-end's `friendlyError` decoder expects.
+ * This mirrors the iface registered in app/lib/errors.ts.
  */
 describe("Friendly error decoding — dashboard revert messages", () => {
-  it("NotCurrentCustodian fires on-chain when caller is not custodian", async () => {
-    const [, shipper, stranger] = await ethers.getSigners();
-    const registry = await ethers.deployContract("ConsignmentRegistry");
+  async function newPackage(shipper: any) {
+    const factory = await ethers.deployContract("PackageFactory");
+    await factory.connect(shipper).create(keccak256(toUtf8Bytes("manifest")), "ipfs://m/1");
+    const pkg = await ethers.getContractAt("Package", await factory.packageOf(1n));
+    return { factory, pkg };
+  }
 
-    await registry.connect(shipper).createConsignment(
-      keccak256(toUtf8Bytes("manifest")), "ipfs://m/1"
-    );
+  it("NotCurrentHolder fires on-chain when caller is not holder", async () => {
+    const [, shipper, stranger] = await ethers.getSigners();
+    const { pkg } = await newPackage(shipper);
 
     await expect(
-      registry.connect(stranger).transferCustody(
-        1n, await stranger.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
+      pkg.connect(stranger).transferCustody(
+        await stranger.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
       )
-    ).to.be.revertedWithCustomError(registry, "NotCurrentCustodian");
+    ).to.be.revertedWithCustomError(pkg, "NotCurrentHolder");
   });
 
   it("AlreadyDelivered fires on-chain when transferring after delivery", async () => {
     const [, shipper] = await ethers.getSigners();
-    const registry = await ethers.deployContract("ConsignmentRegistry");
+    const { pkg } = await newPackage(shipper);
 
-    await registry.connect(shipper).createConsignment(
-      keccak256(toUtf8Bytes("manifest")), "ipfs://m/1"
-    );
-    await registry.connect(shipper).markDelivered(1n);
+    await pkg.connect(shipper).markDelivered();
+    await expect(
+      pkg.connect(shipper).transferCustody(
+        await shipper.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
+      )
+    ).to.be.revertedWithCustomError(pkg, "AlreadyDelivered");
+  });
+
+  it("InvalidRecipient fires when transferring to address(0)", async () => {
+    const [, shipper] = await ethers.getSigners();
+    const { pkg } = await newPackage(shipper);
 
     await expect(
-      registry.connect(shipper).transferCustody(
-        1n, await shipper.getAddress(), "PTLIS", keccak256(toUtf8Bytes("h"))
+      pkg.connect(shipper).transferCustody(
+        ethers.ZeroAddress, "PTLIS", keccak256(toUtf8Bytes("h"))
       )
-    ).to.be.revertedWithCustomError(registry, "AlreadyDelivered");
+    ).to.be.revertedWithCustomError(pkg, "InvalidRecipient");
   });
 
-  it("NotCurrentCustodian selector is 0x608cc9d2", () => {
-    const sel = ethers.id("NotCurrentCustodian()").slice(0, 10);
-    expect(sel).to.equal("0x608cc9d2");
-  });
-
-  it("AlreadyDelivered selector is 0xb9f79653", () => {
-    const sel = ethers.id("AlreadyDelivered()").slice(0, 10);
-    expect(sel).to.equal("0xb9f79653");
-  });
-
-  it("NotOracle selector is 0x1bc2178f", () => {
-    const sel = ethers.id("NotOracle()").slice(0, 10);
-    expect(sel).to.equal("0x1bc2178f");
+  it("NotAFactoryPackage fires for an unknown id via requirePackage", async () => {
+    const factory = await ethers.deployContract("PackageFactory");
+    await expect(factory.requirePackage(99n))
+      .to.be.revertedWithCustomError(factory, "NotAFactoryPackage");
   });
 
   it("ethers Interface parses known selectors back to their error names", () => {
+    // Mirrors app/lib/errors.ts — keep in sync if either side changes.
     const iface = new ethers.Interface([
-      "error UnknownConsignment()",
-      "error NotCurrentCustodian()",
+      "error NotAFactoryPackage()",
+      "error NotCurrentHolder()",
       "error AlreadyDelivered()",
+      "error InvalidRecipient()",
       "error NotOracle()",
-      "error NotOwner()",
     ]);
-    expect(iface.parseError("0x608cc9d2")?.name).to.equal("NotCurrentCustodian");
-    expect(iface.parseError("0xb9f79653")?.name).to.equal("AlreadyDelivered");
-    expect(iface.parseError("0x1bc2178f")?.name).to.equal("NotOracle");
+
+    const roundtrip = (sig: string, name: string) => {
+      const sel = ethers.id(sig).slice(0, 10);
+      expect(iface.parseError(sel)?.name).to.equal(name);
+    };
+
+    roundtrip("NotAFactoryPackage()", "NotAFactoryPackage");
+    roundtrip("NotCurrentHolder()",   "NotCurrentHolder");
+    roundtrip("AlreadyDelivered()",   "AlreadyDelivered");
+    roundtrip("InvalidRecipient()",   "InvalidRecipient");
+    roundtrip("NotOracle()",          "NotOracle");
   });
 });

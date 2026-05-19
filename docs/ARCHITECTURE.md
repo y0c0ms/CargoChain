@@ -71,11 +71,11 @@ the actual course material or professor feedback requirements.
 The merger of the previous `ConsignmentNFT` + `CustodyLedger`. **Not** an
 ERC-721 — see the contract header for the rationale.
 
-- Stores: `Consignment { shipper, currentCustodian, status, manifestHash, manifestURI, createdAt }`
+- Stores: `Consignment { shipper, currentHolder, status, manifestHash, manifestURI, createdAt }`
 - Stores: `Handover[]` log per consignment id
 - Status state machine: `Created → InTransit → Delivered`
 - Anyone can `createConsignment(manifestHash, uri)` — no operator gating
-- `transferCustody(...)` requires `msg.sender == currentCustodian`. In
+- `transferCustody(...)` requires `msg.sender == currentHolder`. In
   production, a DID+VC check would be added here (see NOTE in contract and
   SECURITY.md for the full threat model).
 - `markDelivered(...)` callable only by the current custodian
@@ -100,8 +100,8 @@ ERC-721 — see the contract header for the rationale.
 
 ```
 Current custodian calls transferCustody(id, to, location, handshakeHash)
-    → checks msg.sender == currentCustodian
-    → updates currentCustodian = to
+    → checks msg.sender == currentHolder
+    → updates currentHolder = to
     → appends Handover to _history[id]
     → emits CustodyTransferred event
 

@@ -33,7 +33,7 @@ export const ACCOUNTS: Account[] = [
     role:    "shipper",
     key:     "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
     address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-    hint:    "Hardhat #2 · creates consignments",
+    hint:    "Hardhat #2 · creates packages",
   },
   {
     name:    "TAP Air Cargo",

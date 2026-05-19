@@ -122,7 +122,7 @@ export default function Simulation() {
         <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
           <div className="flex items-end gap-3">
             <label className="block flex-1">
-              <span className="text-sm text-slate-700">Consignment ID</span>
+              <span className="text-sm text-slate-700">Package ID</span>
               <input value={tokenId} onChange={(e) => setTokenId(e.target.value)}
                 className="mt-1 w-full border rounded-lg p-2" />
             </label>
@@ -135,7 +135,7 @@ export default function Simulation() {
           </div>
           <div className="text-xs text-slate-500">
             {watching
-              ? `Watching consignment ${tokenId} · last polled ${lastPolled}`
+              ? `Watching package ${tokenId} · last polled ${lastPolled}`
               : "Click Start watching to subscribe to BatchAnchored events (4 s polling)."}
           </div>
           {status !== "idle" && (
@@ -148,7 +148,7 @@ export default function Simulation() {
         </h2>
         {batches.length === 0 && (
           <div className="text-sm text-slate-500 italic">
-            No batches anchored yet for consignment {tokenId}. Start the oracle simulator:
+            No batches anchored yet for package {tokenId}. Start the oracle simulator:
             <pre className="text-xs bg-slate-100 p-2 rounded mt-1 font-mono">
               MERKLE_ADDR=&lt;address&gt; TOKEN_ID={tokenId} npm run oracle:sim
             </pre>

@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title MerkleIoT — on-chain anchor for batches of off-chain IoT sensor readings
-/// @notice Each batch commits a Merkle root; anyone can later submit a reading +
-///         proof path to demonstrate it was part of the batch. Saves ~99 % of gas
-///         compared with writing every reading on-chain.
-/// @dev Concept-map nodes: Merkle Tree · Hash Function · Oracle · Scaling (batching) ·
-///      Data Integrity.
-contract MerkleIoT {
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+
+// Anchors batches of off-chain IoT readings as Merkle roots. Saves ~99% of gas
+// vs writing every reading on-chain; readings are proved later via a Merkle path.
+contract MerkleIoT is Ownable2Step {
     struct Batch {
         uint256 tokenId;
         bytes32 merkleRoot;
         uint32  readingCount;
         uint64  firstTs;
         uint64  lastTs;
+        // Which approved oracle submitted this batch (forensic trail).
         address submitter;
     }
 
     uint256 public nextBatchId = 1;
-    address public immutable owner;
     mapping(uint256 => Batch) public batches;
+    // Index of batches for each package, so we can list them later.
     mapping(uint256 => uint256[]) private _batchesByToken;
+    // Allowlist of oracles that can call anchorBatch().
     mapping(address => bool) public approvedOracle;
 
     event BatchAnchored(
@@ -34,20 +34,18 @@ contract MerkleIoT {
     event OracleApproved(address indexed oracle, bool approved);
 
     error NotOracle();
-    error NotOwner();
 
-    constructor() {
-        owner = msg.sender;
-    }
+    // Ownable(msg.sender): deployer is the initial owner; ownership changes need
+    // an explicit acceptOwnership() call from the new owner (Ownable2Step).
+    constructor() Ownable(msg.sender) {}
 
-    /// @notice Restrict who can anchor IoT batches. Without this, anyone could
-    ///         spam fake readings against any consignment. (Audit finding H-2.)
-    function setApprovedOracle(address oracle, bool approved) external {
-        if (msg.sender != owner) revert NotOwner();
+    // Owner-gated allowlist. Without this, anyone could spam fake readings.
+    function setApprovedOracle(address oracle, bool approved) external onlyOwner {
         approvedOracle[oracle] = approved;
         emit OracleApproved(oracle, approved);
     }
 
+    // Called by approved oracles once per N readings (e.g. every 8 samples).
     function anchorBatch(
         uint256 tokenId,
         bytes32 merkleRoot,
@@ -62,15 +60,14 @@ contract MerkleIoT {
         emit BatchAnchored(batchId, tokenId, merkleRoot, readingCount, firstTs, lastTs);
     }
 
-    /// @notice Read-only helper used by FreightEscrow to bind a ZK proof to a
-    ///         specific batch. Returns (root, tokenId).
+    // Used by FreightEscrow to bind a ZK proof to a specific batch.
     function rootOf(uint256 batchId) external view returns (bytes32, uint256) {
         Batch storage b = batches[batchId];
         return (b.merkleRoot, b.tokenId);
     }
 
-    /// @notice Verify that `leaf` is part of the batch whose root is stored.
-    /// @dev leaf = keccak256(abi.encodePacked(ts, tempTenthsC, gpsHash))
+    // Standard Merkle-path verification.
+    // leaf = keccak256(abi.encodePacked(ts, tempTenthsC, gpsHash))
     function verifyReading(
         uint256 batchId,
         bytes32 leaf,
@@ -82,6 +79,7 @@ contract MerkleIoT {
         bytes32 computed = leaf;
         for (uint256 i = 0; i < proof.length; i++) {
             bytes32 sibling = proof[i];
+            // Sort pair before hashing so the prover doesn't need to track left/right.
             computed = computed < sibling
                 ? keccak256(abi.encodePacked(computed, sibling))
                 : keccak256(abi.encodePacked(sibling, computed));

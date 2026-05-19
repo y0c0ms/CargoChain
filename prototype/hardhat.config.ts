@@ -2,8 +2,9 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 
 /**
- * Single network: localhost (Hardhat node on 127.0.0.1:8545).
- * All demo and testing runs locally — no public testnet required.
+ * Factory-variant config. Identical to ../prototype/hardhat.config.ts.
+ * Kept as a separate file so the two prototypes can be compiled and
+ * tested in isolation (different artifacts/, cache/, typechain-types/).
  */
 const config: HardhatUserConfig = {
   solidity: {

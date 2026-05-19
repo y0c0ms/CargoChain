@@ -4,20 +4,16 @@ import { keccak256, toUtf8Bytes, concat, getBytes } from "ethers";
 
 /**
  * Security regression suite — one block per audit finding from SECURITY.md.
- *
- *   H-1 (VC issuer allowlist) — removed: CarrierCredential contract dropped
- *       from scope per professor feedback. The concept is documented in
- *       SECURITY.md as "designed but not implemented in prototype".
  *   H-2 — Oracle allowlist on MerkleIoT (untrusted oracle cannot anchor batches)
  *   H-3 — IoT data integrity via on-chain Merkle proof verification
- *       Also covers: custody transfer gated to current custodian only.
+ *       Also covers: custody transfer gated to current holder only.
  */
 
 async function setup() {
   const [owner, alice, bob] = await ethers.getSigners();
-  const registry = await ethers.deployContract("ConsignmentRegistry");
-  const merkle   = await ethers.deployContract("MerkleIoT");
-  return { owner, alice, bob, registry, merkle };
+  const factory = await ethers.deployContract("PackageFactory");
+  const merkle  = await ethers.deployContract("MerkleIoT");
+  return { owner, alice, bob, factory, merkle };
 }
 
 /** Sorted-pair Merkle node hash, matching MerkleIoT.verifyReading. */
@@ -81,14 +77,15 @@ describe("H-3  IoT data integrity (Merkle proof verification)", () => {
     expect(await merkle.verifyReading(1, leafA, [wrongSibling])).to.equal(false);
   });
 
-  // ── Bonus: custody transfer is gated to current custodian only ───────────
-  it("transferCustody reverts NotCurrentCustodian when caller is not custodian", async () => {
-    const { registry, alice, bob } = await setup();
+  // ── Bonus: custody transfer is gated to current holder only ──────────────
+  it("transferCustody reverts NotCurrentHolder when caller is not holder", async () => {
+    const { factory, alice, bob } = await setup();
     const hash = keccak256(toUtf8Bytes("manifest"));
-    await registry.connect(alice).createConsignment(hash, "ipfs://manifest");
-    // bob is NOT the custodian — alice is
+    await factory.connect(alice).create(hash, "ipfs://manifest");
+    const pkg = await ethers.getContractAt("Package", await factory.packageOf(1n));
+    // bob is NOT the holder — alice is
     await expect(
-      registry.connect(bob).transferCustody(1, await bob.getAddress(), "PTLIS", hash)
-    ).to.be.revertedWithCustomError(registry, "NotCurrentCustodian");
+      pkg.connect(bob).transferCustody(await bob.getAddress(), "PTLIS", hash)
+    ).to.be.revertedWithCustomError(pkg, "NotCurrentHolder");
   });
 });
