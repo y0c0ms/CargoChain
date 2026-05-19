@@ -60,7 +60,7 @@ ever signed off.
 `IssuerNotApproved()` if the caller isn't on the schema's allowlist.
 
 **Current prototype:** no VC issuance exists. Custody gating is by
-`msg.sender == currentCustodian` only. In a production deployment, a
+`msg.sender == currentHolder` only. In a production deployment, a
 `CarrierCredential` contract or equivalent would need the issuer-allowlist
 protection described above.
 
@@ -120,7 +120,7 @@ Verifiable Credential issued by an approved authority before allowing
 
 **Current status:** **not implemented.** The `DIDRegistry` and
 `CarrierCredential` contracts were removed from the prototype. The current
-`transferCustody` only checks `msg.sender == currentCustodian`. The DID/VC
+`transferCustody` only checks `msg.sender == currentHolder`. The DID/VC
 layer is documented in the report as a production extension.
 
 A production deployment would (a) add a `DIDRegistry` + `CarrierCredential`
@@ -152,7 +152,7 @@ check.
 
 **Status:** documented limitation.
 **Reasoning:** EIP-712 signed handshake from `to` would double the call surface.
-For the demo, the custodian check (`msg.sender == currentCustodian`) is the
+For the demo, the custodian check (`msg.sender == currentHolder`) is the
 gate. A production system should require a typed-data signature from the
 receiver, or flip to a pull-model where the receiver calls
 `acceptCustody(tokenId)`. A DID/VC check on the recipient would also be added

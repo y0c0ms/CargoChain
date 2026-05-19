@@ -69,7 +69,7 @@ Every problem above is a direct instance of a node in the T1-T6 concept map.
    - State machine: `Created → InTransit → Delivered`
 2. **Custody transfer flow**
    - Carrier calls `transferCustody(id, to, location, handshake)`
-   - Current custodian check enforced on-chain (`msg.sender == currentCustodian`)
+   - Current custodian check enforced on-chain (`msg.sender == currentHolder`)
    - Custody history is appended on-chain
    - NOTE: DID/VC gating on the recipient is a documented production extension
      (see SECURITY.md)

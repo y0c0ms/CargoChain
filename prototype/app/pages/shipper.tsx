@@ -3,9 +3,9 @@ import { ethers } from "ethers";
 import { getSigner } from "../lib/signer";
 import { friendlyError } from "../lib/errors";
 
-const REGISTRY_ABI = [
-  "function createConsignment(bytes32 manifestHash,string manifestURI) returns (uint256)",
-  "event ConsignmentCreated(uint256 indexed id,address indexed shipper,bytes32 manifestHash,string manifestURI)",
+const FACTORY_ABI = [
+  "function create(bytes32 docsHash,string docsURI) returns (uint256 id, address pkg)",
+  "event PackageCreated(uint256 indexed id,address indexed package,address indexed shipper,bytes32 docsHash,string docsURI)",
 ];
 
 export default function Shipper() {
@@ -13,6 +13,7 @@ export default function Shipper() {
   const [originCode, setOriginCode] = useState("PTLIS");
   const [destCode, setDestCode] = useState("AOLAD");
   const [tokenId, setTokenId] = useState<string>("");
+  const [pkgAddr, setPkgAddr] = useState<string>("");
   const [manifestHash, setManifestHash] = useState<string>("");
   const [status, setStatus] = useState<string>("idle");
   const [mode, setMode] = useState<string>("");
@@ -20,9 +21,9 @@ export default function Shipper() {
   async function create() {
     try {
       setStatus("connecting...");
-      const addr = process.env.NEXT_PUBLIC_REGISTRY;
+      const addr = process.env.NEXT_PUBLIC_FACTORY;
       if (!addr) {
-        setStatus("error: NEXT_PUBLIC_REGISTRY not set in prototype/app/.env.local");
+        setStatus("error: NEXT_PUBLIC_FACTORY not set in app/.env.local");
         return;
       }
 
@@ -44,17 +45,22 @@ export default function Shipper() {
       const hash = ethers.keccak256(ethers.toUtf8Bytes(json));
       setManifestHash(hash);
 
-      const registry = new ethers.Contract(addr, REGISTRY_ABI, signer);
+      const factory = new ethers.Contract(addr, FACTORY_ABI, signer);
       setStatus("signing...");
-      const tx = await registry.createConsignment(hash, `ipfs://manifest/${hbl}`);
+      const tx = await factory.create(hash, `ipfs://manifest/${hbl}`);
       setStatus("waiting for confirmation...");
       const rcpt = await tx.wait();
       const evt = (rcpt.logs as ethers.Log[])
         .map((l): ethers.LogDescription | null => {
-          try { return registry.interface.parseLog(l); } catch { return null; }
+          try { return factory.interface.parseLog(l); } catch { return null; }
         })
-        .find((e): e is ethers.LogDescription => e?.name === "ConsignmentCreated");
-      setTokenId(evt ? evt.args[0].toString() : "?");
+        .find((e): e is ethers.LogDescription => e?.name === "PackageCreated");
+      if (evt) {
+        setTokenId(evt.args[0].toString());
+        setPkgAddr(evt.args[1] as string);
+      } else {
+        setTokenId("?");
+      }
       setStatus("created ✓");
     } catch (err) {
       setStatus(`error: ${friendlyError(err)}`);
@@ -67,12 +73,13 @@ export default function Shipper() {
         <a href="/" className="text-teal-700 text-sm hover:underline">&larr; Home</a>
         <h1 className="text-3xl font-bold text-teal-700 mt-2 mb-4">Shipper Dashboard</h1>
         <p className="text-slate-600 mb-2">
-          Register a new consignment on-chain. Only the hash of the manifest is
-          committed; the full JSON document lives off-chain at the URI.
+          Register a new package on-chain. The factory spawns a dedicated
+          Package contract for this shipment; only the hash of the manifest is
+          committed, the full JSON document lives off-chain at the URI.
         </p>
         <p className="text-slate-500 text-xs mb-6">
           You sign the transaction yourself — there's no operator approval step.
-          Anyone with an active DID can ship.
+          Anyone can ship.
         </p>
 
         <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4">
@@ -107,7 +114,7 @@ export default function Shipper() {
             data-testid="create-btn"
             className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700"
           >
-            Create Consignment
+            Create Package
           </button>
           <div className="text-sm text-slate-500">Status: <span data-testid="status">{status}</span></div>
           {mode && <div className="text-xs text-slate-400">Wallet: {mode}</div>}
@@ -119,7 +126,12 @@ export default function Shipper() {
           )}
           {tokenId && (
             <div className="text-sm text-teal-700" data-testid="created-id">
-              Consignment ID: <code>{tokenId}</code>
+              Package ID: <code>{tokenId}</code>
+              {pkgAddr && (
+                <div className="text-xs font-mono text-slate-500 mt-1 break-all">
+                  Clone address: {pkgAddr}
+                </div>
+              )}
             </div>
           )}
         </div>

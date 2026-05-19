@@ -43,3 +43,4 @@ docs/superpowers/
 # Slide drafts kept locally only
 SLIDES_INTERMEDIATE.md
 SLIDES_FINAL.md
+logs/

@@ -3,10 +3,10 @@
 How to run CargoChain locally on Windows, macOS, or Linux. Should take 5 – 10
 minutes from a fresh clone to a fully running stack.
 
-> **Windows users:** for the fastest path, see [`demo/README.md`](../demo/README.md) —
-> a one-line PowerShell command (`.\demo\start-all.ps1`) opens 4 terminals
-> and starts the entire stack with timed delays. Skip to section 9 if you
-> only want to run the tests.
+> **Fastest path:** see [`demo/README.md`](../demo/README.md) —
+> a one-line `./demo/start-all.sh` opens 4 Git Bash tabs in one Windows Terminal
+> window (or backgrounds the 4 processes on Linux/macOS) and starts the entire
+> stack with timed delays. Skip to section 9 if you only want to run the tests.
 
 ---
 
@@ -89,15 +89,18 @@ cd prototype
 npm run deploy:local
 ```
 
-The script deploys 2 contracts and prints their addresses. The default
-Hardhat account starts with nonce 0, so the addresses are deterministic and
-already match what `prototype/app/.env.local` expects.
+The script deploys 2 contracts — `PackageFactory` (which itself deploys the
+`Package` implementation in its constructor) and `MerkleIoT` — and prints their
+addresses. The default Hardhat account starts with nonce 0, so the addresses
+are deterministic. The script also auto-writes `prototype/app/.env.local` so
+the front-end picks them up without any manual copy step.
 
 Expected output:
 
 ```
 Deployer: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-ConsignmentRegistry: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+PackageFactory     : 0x5FbDB2315678afecb367f032d93F642f64180aa3
+  Package impl     : 0x… (internal — deployed inside the factory's constructor; not called directly)
 MerkleIoT          : 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
 ```
 
@@ -111,7 +114,7 @@ Still in the second terminal:
 npx hardhat run scripts/seed.ts --network localhost
 ```
 
-This sets up five demo identities and one consignment:
+This sets up five demo identities and one package:
 
 | Hardhat # | Role     | Demo name      |
 |-----------|----------|----------------|
@@ -122,7 +125,9 @@ This sets up five demo identities and one consignment:
 | #4        | receiver | MSF Luanda     |
 
 After seeding:
-- Demo consignment **#1** is created — Pfizer shipping HBL-2026-042 (Lisbon → Luanda)
+- Demo package **#1** is created — Pfizer shipping HBL-2026-042 (Lisbon → Luanda).
+  The factory spawns a dedicated `Package` clone for this shipment; `factory.packageOf(1)`
+  returns its address.
 
 You won't need to copy any addresses into the UI — the **AccountPicker
 in the top-right of every dashboard** lets you pick which identity is signing
@@ -144,10 +149,10 @@ home page:
 
 | Path           | Role        | Action                                                         |
 |----------------|-------------|----------------------------------------------------------------|
-| `/shipper`     | Shipper     | Create a consignment (manifest hash + URI)                     |
-| `/carrier`     | Carrier     | Transfer custody (current custodian check enforced on-chain)   |
+| `/shipper`     | Shipper     | Create a package (factory spawns a clone, manifest hash + URI) |
+| `/carrier`     | Carrier     | Transfer custody (current-holder check enforced on-chain)      |
 | `/simulation`  | Simulation  | Watch IoT batches anchor live + verify any reading on-chain    |
-| `/regulator`   | Regulator   | Full audit trail for any consignment                           |
+| `/regulator`   | Regulator   | Full audit trail for any package                               |
 
 **Switching identities.** The picker in the top-right of every page lets you
 pick which Hardhat account signs the next transaction. Click → choose
@@ -186,8 +191,8 @@ Merkle path and answer ✅ or ❌.
 ## 8b. Recommended end-to-end demo flow
 
 Here's the cleanest "all four dashboards in 2 minutes" demo using the picker.
-Consignment **#1** has already been created by `seed.ts` (Pfizer is the
-current custodian).
+Package **#1** has already been created by `seed.ts` (Pfizer is the current
+holder of its dedicated `Package` clone).
 
 | # | Pick (top-right)  | Page         | What you do                                                              |
 |---|-------------------|--------------|--------------------------------------------------------------------------|
@@ -216,17 +221,17 @@ npx hardhat test
 You should see:
 
 ```
-  14 passing (~700ms)
+  17 passing (~800ms)
 ```
 
 Broken down by file:
 
-| File                         | Cases | Purpose                                                                    |
-|------------------------------|-------|----------------------------------------------------------------------------|
-| `test/CargoChain.test.ts`    | 2     | Happy path: create, custody, deliver. Negative: non-custodian blocked      |
-| `test/Errors.test.ts`        | 6     | Custom-error selectors + on-chain triggers + dashboard decoder             |
-| `test/E2E.test.ts`           | 1     | Full shipper → carrier → IoT → simulation → receiver → regulator flow      |
-| `test/Security.test.ts`      | 5     | H-2 oracle allowlist (2) + H-3 Merkle integrity (2) + custody gate (1)    |
+| File                              | Cases | Purpose                                                                    |
+|-----------------------------------|-------|----------------------------------------------------------------------------|
+| `test/PackageFactory.test.ts`     | 6     | Happy path + clone isolation + initializer-lock safety                     |
+| `test/Errors.test.ts`             | 5     | Custom-error selectors + on-chain triggers + dashboard decoder             |
+| `test/E2E.test.ts`                | 1     | Full shipper → carrier → IoT → simulation → receiver → regulator flow      |
+| `test/Security.test.ts`           | 5     | H-2 oracle allowlist (2) + H-3 Merkle integrity (2) + custody gate (1)     |
 
 ---
 
@@ -235,10 +240,10 @@ Broken down by file:
 | Symptom                                            | Cause / Fix                                                |
 |----------------------------------------------------|------------------------------------------------------------|
 | `cannot connect to network localhost`              | The Hardhat node terminal isn't running. Start step 4.     |
-| Carrier dashboard shows `NotCurrentCustodian`      | You're signing as the wrong identity. Pick the *current* custodian in the top-right picker (Run Regulator audit to see who holds it). |
+| Carrier dashboard shows `NotCurrentHolder`         | You're signing as the wrong identity. Pick the *current* holder in the top-right picker (Run Regulator audit to see who holds it). |
 | Simulation page shows "Batch JSON not found"       | The oracle simulator hasn't run yet. Start it (step 8).    |
 | Port 3000 already in use                           | `lsof -i :3000` (or `netstat -ano | findstr 3000` on Windows) → kill or `PORT=3001 npm run dev` |
-| Front-end says `NEXT_PUBLIC_REGISTRY not set`      | `prototype/app/.env.local` is missing the addresses. Re-run `npm run deploy:local` and copy the printed block. |
+| Front-end says `NEXT_PUBLIC_FACTORY not set`       | `prototype/app/.env.local` is missing — re-run `npm run deploy:local` (it auto-writes the file). |
 | MetaMask shows the wrong network                   | Add Hardhat network manually: RPC `http://127.0.0.1:8545`, chainId `31337` |
 
 ---

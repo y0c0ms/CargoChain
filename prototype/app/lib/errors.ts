@@ -13,27 +13,36 @@ import { ethers } from "ethers";
  * ethers' own `shortMessage`.
  */
 const errorIface = new ethers.Interface([
-  // ConsignmentRegistry
-  "error UnknownConsignment()",
-  "error NotCurrentCustodian()",
+  // PackageFactory
+  "error NotAFactoryPackage()",
+  // Package (per-shipment clone)
+  "error NotCurrentHolder()",
   "error AlreadyDelivered()",
+  "error InvalidRecipient()",
+  "error InvalidInitialization()",
   // MerkleIoT
   "error NotOracle()",
-  "error NotOwner()",
+  // Ownable2Step (MerkleIoT inherits)
+  "error OwnableUnauthorizedAccount(address account)",
 ]);
 
 const FRIENDLY: Record<string, string> = {
-  // ConsignmentRegistry
-  UnknownConsignment:
-    "No consignment exists with that ID.",
-  NotCurrentCustodian:
-    "You are not the current custodian — only the holder can transfer or mark delivered.",
+  // PackageFactory
+  NotAFactoryPackage:
+    "That ID does not match any package issued by this factory.",
+  // Package
+  NotCurrentHolder:
+    "You are not the current holder — only the holder can transfer or mark delivered.",
   AlreadyDelivered:
-    "This consignment has already been marked Delivered — no further transfers allowed.",
+    "This package has already been marked Delivered — no further transfers allowed.",
+  InvalidRecipient:
+    "Recipient address is invalid (zero address would lock the package forever).",
+  InvalidInitialization:
+    "This package clone has already been initialized.",
   // MerkleIoT
   NotOracle:
     "Only approved IoT oracles can anchor sensor batches.",
-  NotOwner:
+  OwnableUnauthorizedAccount:
     "Only the contract owner can perform this action.",
 };
 
