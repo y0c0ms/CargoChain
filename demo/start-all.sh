@@ -46,10 +46,10 @@ EOF
     # `bash --login -i -c '<cmd>; exec bash'` keeps the tab open after the
     # script exits so the user can see the output (or restart it).
     wt.exe -w 0 \
-      new-tab    --title "T1 node"   -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/start-node.sh; exec bash" \
-      \; new-tab --title "T2 deploy" -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/deploy-seed.sh; exec bash" \
-      \; new-tab --title "T3 app"    -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/start-app.sh; exec bash" \
-      \; new-tab --title "T4 oracle" -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/start-oracle.sh; exec bash"
+      new-tab    --title "T1 node"   -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/start-node.sh\; exec bash" \
+      \; new-tab --title "T2 deploy" -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/deploy-seed.sh\; exec bash" \
+      \; new-tab --title "T3 app"    -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/start-app.sh\; exec bash" \
+      \; new-tab --title "T4 oracle" -p "Git Bash" -d "$WIN_ROOT" bash --login -i -c "./demo/start-oracle.sh\; exec bash"
 
     echo "Opened Windows Terminal with 4 tabs (T1–T4)."
     echo "Wait ~25s, then open http://localhost:3000."
