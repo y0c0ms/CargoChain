@@ -12,20 +12,51 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Set-Location (Join-Path $repoRoot "prototype")
 
-# Deterministic Hardhat address for MerkleIoT (deployer #0, deploy nonce 3)
-$env:MERKLE_ADDR = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9"
 if (-not $env:TOKEN_ID) { $env:TOKEN_ID = "1" }
+$envFile = Join-Path (Join-Path $repoRoot "prototype") "app\.env.local"
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  TERMINAL 4 -- IoT oracle simulator" -ForegroundColor Cyan
-Write-Host "  TOKEN_ID    = $($env:TOKEN_ID)" -ForegroundColor Cyan
-Write-Host "  MERKLE_ADDR = $($env:MERKLE_ADDR)" -ForegroundColor Cyan
+Write-Host "  TOKEN_ID = $($env:TOKEN_ID)" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "Waiting 18s for deploy + seed before anchoring batches..." -ForegroundColor Yellow
-Start-Sleep -Seconds 18
+# Poll until deploy-seed has written a fresh .env.local (newer than this script's start time).
+$startTime = Get-Date
+Write-Host "Waiting for deploy-seed to publish addresses..." -ForegroundColor Yellow
+$gotAddr = $false
+for ($i = 0; $i -lt 60; $i++) {
+    if (Test-Path $envFile) {
+        $fileTime = (Get-Item $envFile).LastWriteTime
+        if ($fileTime -gt $startTime) {
+            $merkleLine = Get-Content $envFile | Where-Object { $_ -match '^NEXT_PUBLIC_MERKLE=' }
+            if ($merkleLine) {
+                $env:MERKLE_ADDR = ($merkleLine -split '=', 2)[1].Trim()
+                $gotAddr = $true
+                break
+            }
+        }
+    }
+    Start-Sleep -Seconds 1
+}
 
+if (-not $gotAddr) {
+    Write-Host "WARNING: .env.local not updated within 60s. Reading whatever is there now." -ForegroundColor Yellow
+    if (Test-Path $envFile) {
+        $merkleLine = Get-Content $envFile | Where-Object { $_ -match '^NEXT_PUBLIC_MERKLE=' }
+        if ($merkleLine) {
+            $env:MERKLE_ADDR = ($merkleLine -split '=', 2)[1].Trim()
+        }
+    }
+}
+
+if (-not $env:MERKLE_ADDR) {
+    Write-Host "ERROR: could not determine MerkleIoT address. Did deploy-seed succeed?" -ForegroundColor Red
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
+Write-Host "MERKLE_ADDR = $($env:MERKLE_ADDR)" -ForegroundColor Green
 Write-Host "Starting oracle. New batch every ~8 seconds." -ForegroundColor Green
 npm run oracle:sim
