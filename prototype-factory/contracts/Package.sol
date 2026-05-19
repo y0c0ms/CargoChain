@@ -17,11 +17,11 @@ contract Package is Initializable {
         bytes32 proofOfHandshake;
     }
 
-    // Address of the factory that created this clone; set once in initialize().
+    // The Address of the factory that created this clone it is set once in initialize().
     address public factory;
-    // The original shipper; never changes after init.
+    // The original shipper should never changes after init.
     address public shipper;
-    // Whoever has custody right now; updated on every transferCustody().
+    // Whoever has custody right now updated on every transferCustody().
     address public currentHolder;
     Status  public status;
     // keccak256 of the off-chain JSON describing the cargo.
@@ -51,8 +51,7 @@ contract Package is Initializable {
         _disableInitializers();
     }
 
-    // Called once by the factory right after Clones.clone(). The `initializer`
-    // modifier reverts with InvalidInitialization() on any second call.
+    // Called once by the factory right after Clones.clone(). The `initializer`modifier reverts with InvalidInitialization() on any second call.
     function initialize(
         address _factory,
         address _shipper,

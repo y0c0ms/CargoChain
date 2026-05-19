@@ -2,8 +2,9 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-// Anchors batches of off-chain IoT readings as Merkle roots. Saves ~99% of gas
+// Anchors batches of off-chain IoT readings as Merkle roots. Saves linear times gas based on the batch size
 // vs writing every reading on-chain; readings are proved later via a Merkle path.
 contract MerkleIoT is Ownable2Step {
     struct Batch {
@@ -31,6 +32,7 @@ contract MerkleIoT is Ownable2Step {
         uint64 firstTs,
         uint64 lastTs
     );
+    // Covers true and false instead of having 2 events
     event OracleApproved(address indexed oracle, bool approved);
 
     error NotOracle();
@@ -60,13 +62,13 @@ contract MerkleIoT is Ownable2Step {
         emit BatchAnchored(batchId, tokenId, merkleRoot, readingCount, firstTs, lastTs);
     }
 
-    // Used by FreightEscrow to bind a ZK proof to a specific batch.
+    // NOT IN USE > Used by FreightEscrow to bind a ZK proof to a specific batch.
     function rootOf(uint256 batchId) external view returns (bytes32, uint256) {
         Batch storage b = batches[batchId];
         return (b.merkleRoot, b.tokenId);
     }
 
-    // Standard Merkle-path verification.
+    // Delegates to OZ MerkleProof — sorted-pair convention, audited.
     // leaf = keccak256(abi.encodePacked(ts, tempTenthsC, gpsHash))
     function verifyReading(
         uint256 batchId,
@@ -75,16 +77,7 @@ contract MerkleIoT is Ownable2Step {
     ) external view returns (bool) {
         bytes32 root = batches[batchId].merkleRoot;
         if (root == bytes32(0)) return false;
-
-        bytes32 computed = leaf;
-        for (uint256 i = 0; i < proof.length; i++) {
-            bytes32 sibling = proof[i];
-            // Sort pair before hashing so the prover doesn't need to track left/right.
-            computed = computed < sibling
-                ? keccak256(abi.encodePacked(computed, sibling))
-                : keccak256(abi.encodePacked(sibling, computed));
-        }
-        return computed == root;
+        return MerkleProof.verifyCalldata(proof, root, leaf);
     }
 
     function batchesOf(uint256 tokenId) external view returns (uint256[] memory) {
