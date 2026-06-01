@@ -80,8 +80,8 @@ describe("H-3  IoT data integrity (Merkle proof verification)", () => {
   // ── Bonus: custody transfer is gated to current holder only ──────────────
   it("transferCustody reverts NotCurrentHolder when caller is not holder", async () => {
     const { factory, alice, bob } = await setup();
-    const hash = keccak256(toUtf8Bytes("manifest"));
-    await factory.connect(alice).create(hash, "ipfs://manifest");
+    const hash = keccak256(toUtf8Bytes("doc"));
+    await factory.connect(alice).create(hash, "ipfs://docs/1");
     const pkg = await ethers.getContractAt("Package", await factory.packageOf(1n));
     // bob is NOT the holder — alice is
     await expect(

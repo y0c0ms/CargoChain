@@ -10,7 +10,7 @@ import { keccak256, toUtf8Bytes } from "ethers";
 describe("Friendly error decoding — dashboard revert messages", () => {
   async function newPackage(shipper: any) {
     const factory = await ethers.deployContract("PackageFactory");
-    await factory.connect(shipper).create(keccak256(toUtf8Bytes("manifest")), "ipfs://m/1");
+    await factory.connect(shipper).create(keccak256(toUtf8Bytes("doc")), "ipfs://docs/1");
     const pkg = await ethers.getContractAt("Package", await factory.packageOf(1n));
     return { factory, pkg };
   }

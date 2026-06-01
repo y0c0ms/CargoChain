@@ -5,7 +5,8 @@ import { friendlyError } from "../lib/errors";
 
 // Resolve `id` → clone address via the factory, then call into the clone directly.
 const FACTORY_ABI = [
-  "function packageOf(uint256) view returns (address)",
+  // Reverts NotAFactoryPackage for an unknown id — decoded by lib/errors.ts.
+  "function requirePackage(uint256) view returns (address)",
 ];
 const PACKAGE_ABI = [
   "function transferCustody(address to,string locationUnLocode,bytes32 proofOfHandshake) external",
@@ -24,10 +25,9 @@ export default function Carrier() {
     const addr = process.env.NEXT_PUBLIC_FACTORY;
     if (!addr) throw new Error("NEXT_PUBLIC_FACTORY not set in app/.env.local");
     const factory = new ethers.Contract(addr, FACTORY_ABI, signer);
-    const pkgAddr = await factory.packageOf(tokenId);
-    if (pkgAddr === ethers.ZeroAddress) {
-      throw new Error(`No package with ID ${tokenId}`);
-    }
+    // requirePackage reverts NotAFactoryPackage for an unknown id; the revert
+    // propagates to friendlyError(), which renders the readable message.
+    const pkgAddr = await factory.requirePackage(tokenId);
     return new ethers.Contract(pkgAddr, PACKAGE_ABI, signer);
   }
 

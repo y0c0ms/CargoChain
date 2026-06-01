@@ -7,12 +7,12 @@ import { keccak256, toUtf8Bytes, concat, getBytes } from "ethers";
  * Factory-of-clones variant: PackageFactory + per-package Package clones.
  *
  * Flow:
- *   SHIPPER     : create package (factory spawns clone, manifest hash anchored)
+ *   SHIPPER     : create package (factory spawns clone, document hash anchored)
  *   CARRIER     : take custody (on the clone)
  *   IoT ORACLE  : anchor a Merkle batch of sensor readings
  *   SIMULATION  : verify a specific reading on-chain via Merkle proof
  *   RECEIVER    : take custody at destination, mark delivered
- *   REGULATOR   : read manifest hash + custody history + IoT batch count
+ *   REGULATOR   : read document hash + custody history + IoT batch count
  */
 
 /** Sorted-pair Merkle node hash, matching MerkleIoT.verifyReading. */
@@ -34,7 +34,7 @@ describe("CargoChain — every dashboard interaction (factory variant)", () => {
 
     // ─── SHIPPER: create package ───────────────────────────────────────────
     console.log("\n── SHIPPER dashboard ──");
-    const manifest = JSON.stringify({
+    const doc = JSON.stringify({
       hbl: "HBL-2026-042",
       originCode: "PTLIS",
       destCode: "AOLAD",
@@ -43,11 +43,11 @@ describe("CargoChain — every dashboard interaction (factory variant)", () => {
       tempMinTenthsC: 20,
       tempMaxTenthsC: 80,
     });
-    const docsHash = keccak256(toUtf8Bytes(manifest));
+    const docsHash = keccak256(toUtf8Bytes(doc));
 
     const createTx   = await factory.connect(shipper).create(
       docsHash,
-      "ipfs://manifest/HBL-2026-042"
+      "ipfs://docs/HBL-2026-042"
     );
     const createRcpt = await createTx.wait();
     const id = 1n;
@@ -105,8 +105,8 @@ describe("CargoChain — every dashboard interaction (factory variant)", () => {
     const history = await pkg.historyOf();
     const batches = await merkle.batchesOf(id);
 
-    console.log(`   manifest hash : ${dHash}`);
-    console.log(`   manifest URI  : ${dURI}`);
+    console.log(`   document hash : ${dHash}`);
+    console.log(`   document URI  : ${dURI}`);
     console.log(`   shipper       : ${shp.slice(0,8)}…`);
     console.log(`   custody hops  : ${history.length}`);
     for (const h of history) {
@@ -115,7 +115,7 @@ describe("CargoChain — every dashboard interaction (factory variant)", () => {
     console.log(`   IoT batches anchored: ${batches.length}`);
 
     expect(dHash).to.equal(docsHash);
-    expect(dURI).to.equal("ipfs://manifest/HBL-2026-042");
+    expect(dURI).to.equal("ipfs://docs/HBL-2026-042");
     expect(history.length).to.equal(2);
     expect(batches.length).to.equal(1);
     expect(Number(st)).to.equal(2);

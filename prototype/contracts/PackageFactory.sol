@@ -49,7 +49,9 @@ contract PackageFactory {
         emit PackageCreated(id, pkg, msg.sender, docsHash, docsURI);
     }
 
-    // Used by downstream contracts (Escrow, MerkleIoT) to refuse forged addresses.
+    // Resolves an id to its clone address, reverting NotAFactoryPackage for any
+    // unregistered id. Used by the frontend as the id-validity guard on every
+    // lookup; wiring it as a cross-check inside MerkleIoT is left out of scope.
     function requirePackage(uint256 id) external view returns (address) {
         address pkg = packageOf[id];
         if (pkg == address(0)) revert NotAFactoryPackage();

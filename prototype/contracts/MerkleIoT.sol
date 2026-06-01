@@ -61,7 +61,7 @@ contract MerkleIoT is Ownable2Step {
         emit BatchAnchored(batchId, tokenId, merkleRoot, readingCount, firstTs, lastTs);
     }
 
-    // Used by FreightEscrow to bind a ZK proof to a specific batch.
+    // Read helper: returns the anchored root + tokenId for a batch (auditors/UI).
     function rootOf(uint256 batchId) external view returns (bytes32, uint256) {
         Batch storage b = batches[batchId];
         return (b.merkleRoot, b.tokenId);

@@ -14,7 +14,7 @@ export default function Shipper() {
   const [destCode, setDestCode] = useState("AOLAD");
   const [tokenId, setTokenId] = useState<string>("");
   const [pkgAddr, setPkgAddr] = useState<string>("");
-  const [manifestHash, setManifestHash] = useState<string>("");
+  const [docHash, setDocHash] = useState<string>("");
   const [status, setStatus] = useState<string>("idle");
   const [mode, setMode] = useState<string>("");
 
@@ -30,9 +30,9 @@ export default function Shipper() {
       const { signer, address, mode: m } = await getSigner();
       setMode(`${m} · ${address.slice(0, 6)}…${address.slice(-4)}`);
 
-      // Build the manifest off-chain as JSON, then hash it.
+      // Build the transport document off-chain as JSON, then hash it.
       // Only the hash + URI go on-chain — the document itself stays off-chain.
-      const manifest = {
+      const doc = {
         hbl,
         originCode,
         destCode,
@@ -41,13 +41,13 @@ export default function Shipper() {
         tempMinTenthsC: 20,
         tempMaxTenthsC: 80,
       };
-      const json = JSON.stringify(manifest);
+      const json = JSON.stringify(doc);
       const hash = ethers.keccak256(ethers.toUtf8Bytes(json));
-      setManifestHash(hash);
+      setDocHash(hash);
 
       const factory = new ethers.Contract(addr, FACTORY_ABI, signer);
       setStatus("signing...");
-      const tx = await factory.create(hash, `ipfs://manifest/${hbl}`);
+      const tx = await factory.create(hash, `ipfs://docs/${hbl}`);
       setStatus("waiting for confirmation...");
       const rcpt = await tx.wait();
       const evt = (rcpt.logs as ethers.Log[])
@@ -74,8 +74,8 @@ export default function Shipper() {
         <h1 className="text-3xl font-bold text-teal-700 mt-2 mb-4">Shipper Dashboard</h1>
         <p className="text-slate-600 mb-2">
           Register a new package on-chain. The factory spawns a dedicated
-          Package contract for this shipment; only the hash of the manifest is
-          committed, the full JSON document lives off-chain at the URI.
+          Package contract for this shipment. Only the hash of the transport
+          document is committed, the full JSON document lives off-chain at the URI.
         </p>
         <p className="text-slate-500 text-xs mb-6">
           You sign the transaction yourself — there's no operator approval step.
@@ -118,10 +118,10 @@ export default function Shipper() {
           </button>
           <div className="text-sm text-slate-500">Status: <span data-testid="status">{status}</span></div>
           {mode && <div className="text-xs text-slate-400">Wallet: {mode}</div>}
-          {manifestHash && (
+          {docHash && (
             <div className="text-xs font-mono text-slate-700 bg-slate-50 p-3 rounded">
-              <div className="text-slate-500 mb-1">Manifest hash anchored:</div>
-              <div className="break-all">{manifestHash}</div>
+              <div className="text-slate-500 mb-1">Document hash anchored:</div>
+              <div className="break-all">{docHash}</div>
             </div>
           )}
           {tokenId && (

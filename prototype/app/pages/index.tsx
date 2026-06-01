@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Home() {
   const dashboards = [
-    { href: "/shipper",    name: "Shipper",    desc: "Create a package (factory spawns a dedicated clone, manifest hash anchored on-chain)" },
+    { href: "/shipper",    name: "Shipper",    desc: "Create a package (factory spawns a dedicated clone, document hash anchored on-chain)" },
     { href: "/carrier",    name: "Carrier",    desc: "Take custody, hand off to next carrier, or mark delivered" },
     { href: "/simulation", name: "Simulation", desc: "Live IoT batches + on-chain Merkle proof verification" },
     { href: "/regulator",  name: "Regulator",  desc: "Full audit trail for any package" },

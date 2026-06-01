@@ -30,17 +30,9 @@ prototype/app/public/oracle-batches/*.json
 # Package manager lock files (project uses npm)
 bun.lock
 
-# IDE / OS / agent tooling
+# Editor / OS / local tooling
 .DS_Store
 Thumbs.db
 *.log
 dist/
-.claude/
-**/.claude/
-.mcp.json
-docs/superpowers/
-
-# Slide drafts kept locally only
-SLIDES_INTERMEDIATE.md
-SLIDES_FINAL.md
 logs/

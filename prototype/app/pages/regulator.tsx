@@ -4,7 +4,9 @@ import { getSigner } from "../lib/signer";
 import { friendlyError } from "../lib/errors";
 
 const FACTORY_ABI = [
-  "function packageOf(uint256) view returns (address)",
+  // Reverts NotAFactoryPackage for an unknown id (caught below to keep the
+  // audit view graceful — IoT batches are still shown for any tokenId).
+  "function requirePackage(uint256) view returns (address)",
 ];
 const PACKAGE_ABI = [
   "function shipper() view returns (address)",
@@ -34,7 +36,7 @@ export default function Regulator() {
       const factory = new ethers.Contract(process.env.NEXT_PUBLIC_FACTORY!, FACTORY_ABI, signer);
       const merkle  = new ethers.Contract(process.env.NEXT_PUBLIC_MERKLE!,  MERKLE_ABI,  signer);
 
-      const pkgAddr: string = await factory.packageOf(tokenId).catch(() => ethers.ZeroAddress);
+      const pkgAddr: string = await factory.requirePackage(tokenId).catch(() => ethers.ZeroAddress);
       const lines: string[] = [];
       lines.push(`Package #${tokenId}`);
 
@@ -55,11 +57,11 @@ export default function Regulator() {
         lines.push(`Shipper          : ${shipper}`);
         lines.push(`Current holder   : ${holder}`);
         lines.push(`Status           : ${STATUS[Number(st)] ?? st}`);
-        lines.push(`Manifest hash    : ${docsHash}`);
-        lines.push(`Manifest URI     : ${docsURI}`);
+        lines.push(`Document hash    : ${docsHash}`);
+        lines.push(`Document URI     : ${docsURI}`);
         lines.push(`Created          : ${new Date(Number(createdAt) * 1000).toISOString()}`);
         lines.push(``);
-        lines.push(`Note: full manifest data lives off-chain at the URI.`);
+        lines.push(`Note: the full transport document lives off-chain at the URI.`);
         lines.push(`      Fetch the JSON, hash it, and compare to the hash above`);
         lines.push(`      to verify it has not been tampered with.`);
         lines.push(``);
@@ -87,7 +89,7 @@ export default function Regulator() {
         <a href="/" className="text-teal-700 text-sm hover:underline">&larr; Home</a>
         <h1 className="text-3xl font-bold text-teal-700 mt-2 mb-4">Regulator Dashboard</h1>
         <p className="text-slate-600 mb-6">
-          Full audit trail for any package. Shows custody, manifest hash,
+          Full audit trail for any package. Shows custody, document hash,
           and IoT-anchor count — all readable by anyone, no permissions needed.
         </p>
 

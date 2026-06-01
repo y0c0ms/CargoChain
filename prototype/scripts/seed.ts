@@ -46,7 +46,7 @@ async function main() {
   }
 
   // ── 2. Create demo package #1 (Pfizer signs) ─────────────────────────────
-  const manifest = {
+  const doc = {
     hbl: "HBL-2026-042",
     originCode: "PTLIS",
     destCode: "AOLAD",
@@ -55,16 +55,16 @@ async function main() {
     tempMinTenthsC: 20,
     tempMaxTenthsC: 80,
   };
-  const docsHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(manifest)));
+  const docsHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(doc)));
   if ((await factory.nextId()) === 1n) {
     await (await factory.connect(pfizer).create(
       docsHash,
-      "ipfs://manifest/HBL-2026-042"
+      "ipfs://docs/HBL-2026-042"
     )).wait();
     const pkgAddr = await factory.packageOf(1n);
     console.log("  created package #1 (signed by Pfizer)");
     console.log("  package address :", pkgAddr);
-    console.log("  manifest hash   :", docsHash);
+    console.log("  document hash   :", docsHash);
   } else {
     console.log("  package #1 already exists");
   }

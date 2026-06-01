@@ -31,7 +31,7 @@ PackageFactory.create(docsHash, docsURI)
 
 Key points:
 - `implementation` is `immutable` — set once, never changed
-- `requirePackage(id)` is called by `MerkleIoT` to reject forged/unregistered addresses
+- `requirePackage(id)` resolves an id → clone address and reverts `NotAFactoryPackage` for any unregistered id. It is the id-validity guard the frontend uses on every lookup (`carrier.tsx`, `regulator.tsx`) and is covered by `test/Errors.test.ts`. Wiring it as a cross-check inside `MerkleIoT.anchorBatch` is left out of scope.
 - Each clone delegates all calls to the single implementation via `delegatecall`
 - Two-directional lookup: `packageOf(id)` and `idOf(address)`
 

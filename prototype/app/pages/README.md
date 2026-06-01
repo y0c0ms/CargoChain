@@ -19,7 +19,7 @@ No contract interaction — pure navigation.
 **Contract called:** `PackageFactory.create(docsHash, docsURI)`
 
 **Flow:**
-1. User fills in cargo description + manifest URI
+1. User fills in cargo description + document URI
 2. App computes `keccak256(description)` as `docsHash`
 3. Calls `factory.create(docsHash, uri)` — factory deploys an EIP-1167 clone
 4. Shows the new package ID and clone address
@@ -37,7 +37,7 @@ No contract interaction — pure navigation.
 - `Package.markDelivered()`
 
 **Flow:**
-1. User enters package ID — app resolves the clone address via `factory.packageOf(id)`
+1. User enters package ID — app resolves the clone address via `factory.requirePackage(id)` (reverts `NotAFactoryPackage` for an unknown id, shown as a friendly message)
 2. Loads current package state: `currentHolder`, `status`, `hopCount`
 3. To transfer: enter recipient address + UN/LOCODE + handshake hash → submit
 4. To deliver: click "Mark Delivered" (only available when caller is `currentHolder`)
@@ -75,7 +75,7 @@ batch JSON files. If no files exist, the dashboard shows "Batch JSON not found".
 
 **Flow:**
 1. User enters package ID
-2. App resolves clone address via `factory.packageOf(id)`
+2. App resolves clone address via `factory.requirePackage(id)` (unknown id is caught so IoT batches still render)
 3. Loads and displays:
    - `Package.status` — current status
    - `Package.shipper` / `Package.currentHolder`

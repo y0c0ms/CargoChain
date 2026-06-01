@@ -1,57 +1,102 @@
-# CargoChain Prototype — Factory Variant
+# CargoChain Prototype
 
-Parallel implementation of the CargoChain core, using a **factory of EIP-1167 minimal-proxy clones** instead of a single mapping-based registry.
+Blockchain prototype for pharmaceutical supply-chain traceability, built around a
+**factory of EIP-1167 minimal-proxy clones**. Each shipment gets its own contract
+instance, so custody transfers on different shipments touch disjoint storage and
+do not contend on a single registry.
 
-## Why this exists
+## Design
 
-The original `../prototype/` works fine and is what the dissertation describes.
-This folder is a side-by-side comparison meant to address one concern: at very high package counts and on future L2s with parallel execution, a single registry contract becomes a serialization bottleneck because every custody transfer mutates the same contract's storage.
+`PackageFactory.sol` deploys one lightweight `Package.sol` clone per shipment and
+keeps an `id -> address` directory. `MerkleIoT.sol` anchors IoT sensor batches as
+32-byte Merkle roots so high-frequency readings never hit on-chain storage
+directly. Only document hashes and Merkle roots live on-chain. The full transport
+documents and raw readings stay off-chain.
 
-The factory variant gives each package its own contract address, so custody transfers on different packages touch disjoint storage and can run in parallel.
+## Contracts (`contracts/`)
 
-## What's different
-
-| Aspect                      | `prototype/` (mapping)                 | `prototype-factory/` (this folder)         |
-| --------------------------- | -------------------------------------- | ------------------------------------------ |
-| Storage layout              | `mapping(uint256 => Consignment)`      | One `Package` contract per package         |
-| Per-package state           | A row in the registry                  | A whole contract instance                  |
-| Create cost                 | ~80k gas (SSTOREs)                     | ~75k gas (EIP-1167 clone + initialize)     |
-| Per-transfer cost           | Baseline                               | + ~2.5k gas (one extra CALL)               |
-| Lookup by id                | `registry.consignments(id)`            | `factory.packageOf(id)` → call clone       |
-| Parallel execution friendly | ❌ all writes contend                  | ✅ different addresses, no contention      |
-| Blast radius of a bug       | All packages                           | One package                                |
-| Naming                      | `Consignment` / `manifestHash` / `URI` | `Package` / `docsHash` / `docsURI`         |
+- **PackageFactory.sol** spawns per-shipment clones. `create(docsHash, docsURI)`
+  returns the new id and clone address. `requirePackage(id)` resolves an id to its
+  clone address and reverts `NotAFactoryPackage` for an unknown id.
+- **Package.sol** is the per-shipment state machine: `Created -> InTransit ->
+  Delivered`. `transferCustody(to, location, proofOfHandshake)` and
+  `markDelivered()` are restricted to the current holder (custom errors
+  `NotCurrentHolder`, `AlreadyDelivered`, `InvalidRecipient`). Creation commits the
+  keccak256 hash of the off-chain transport document.
+- **MerkleIoT.sol** anchors batches with `anchorBatch(tokenId, root, ...)` from an
+  approved-oracle allowlist (`NotOracle` otherwise) and verifies any single reading
+  on-chain with `verifyReading(batchId, leaf, proof)` in O(log N).
+- **benchmarks/NaiveIoT.sol** is benchmark-only and never deployed. It stores
+  readings directly on-chain so `GasBenchmark.test.ts` can compare it against the
+  Merkle-batching approach.
 
 ## Layout
 
 ```
-prototype-factory/
-├── contracts/
-│   ├── Package.sol         — per-package contract (implementation + clones)
-│   ├── PackageFactory.sol  — spawns clones, keeps id → address directory
-│   └── MerkleIoT.sol       — unchanged from prototype/ (shared design)
-├── scripts/
-│   └── deploy.ts           — deploys PackageFactory + MerkleIoT
-├── test/
-│   └── PackageFactory.test.ts
-├── hardhat.config.ts
-├── package.json
-└── tsconfig.json
+prototype/
+  contracts/
+    Package.sol           per-shipment clone (implementation + clones)
+    PackageFactory.sol    spawns clones, keeps the id -> address directory
+    MerkleIoT.sol         IoT batch anchoring + on-chain verifyReading
+    benchmarks/
+      NaiveIoT.sol        benchmark-only baseline (never deployed)
+  scripts/
+    deploy.ts             deploys PackageFactory + MerkleIoT, writes app/.env.local
+    seed.ts               approves the demo oracle, creates demo package #1
+    oracle-simulator.ts   IoT oracle: signs and anchors Merkle batches
+    make_gas_charts.py    regenerates the gas-benchmark charts in docs/
+  test/                   25 tests (24 functional + 1 gas benchmark)
+  app/                    Next.js dashboards (shipper, carrier, simulation, regulator)
+  hardhat.config.ts
+  package.json
 ```
 
 ## Run
 
-```bash
-cd prototype-factory
+Easiest path uses the launcher in `demo/` (opens node, deploy+seed, app and oracle):
+
+```
+# Windows
+powershell -ExecutionPolicy Bypass -File .\demo\start-all.ps1
+# Git Bash / Linux / macOS
+./demo/start-all.sh
+```
+
+Then open http://localhost:3000 after ~25 seconds. Stop with `demo/stop-all`.
+
+Manual, step by step:
+
+```
 npm install
-npx hardhat node            # in one terminal
-npm run deploy:local        # in another
+npm run node                 # terminal 1: local Hardhat chain
+npm run deploy:local         # terminal 2: deploy contracts, write app/.env.local
+npx hardhat run scripts/seed.ts --network localhost
+cd app && npm install && npm run dev   # terminal 3: Next.js dashboards
+```
+
+## Tests
+
+```
 npm test
 ```
 
+25 tests pass across `PackageFactory`, `Package` (lifecycle and errors), `MerkleIoT`
+(anchoring and proof verification), an end-to-end multi-actor flow, a security
+suite (unauthorized-oracle and tampered-proof rejection), and a gas benchmark.
+
+## Gas benchmark
+
+For a 5-hour trip at one reading per minute (300 readings), anchoring 10-reading
+Merkle batches costs about 4.5M gas, against 13.9M for one big on-chain transaction
+and 22.1M for one transaction per reading. Regenerate the charts with
+`python prototype/scripts/make_gas_charts.py` (needs `pip install matplotlib numpy`).
+
 ## Notes
 
-- Clones can't run constructors. `Package.initialize()` is guarded by `if (shipper != address(0)) revert AlreadyInitialized()` and can only be called once, right after the factory clones the implementation.
-- The factory keeps both `packageOf[id] → address` and `idOf[address] → id` so other contracts (Escrow, MerkleIoT) can verify a given address really   is a factory-spawned package.
-- The `app/` frontend lives in `../prototype/app/` and currently targets the mapping variant. Migrating it is left for later — the contract API is the   only thing that changes (every `registry.X(id, ...)` becomes `factory.packageOf(id) → Package(addr).X(...)`).
-```
+- Clones cannot run constructors. `Package` is initialized once right after the
+  factory clones the implementation, guarded against re-initialization.
+- The frontend resolves a shipment with `factory.requirePackage(id)` and then calls
+  the clone directly, so an unknown id surfaces a readable `NotAFactoryPackage`
+  error instead of a silent zero address.
+- The oracle simulator signs each Merkle root with an m-of-n Ed25519 quorum before
+  `anchorBatch`, so a single compromised key cannot inject readings.
